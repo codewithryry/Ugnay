@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
+  DEFAULT_MODEL,
+  DEFAULT_PROVIDER,
   ProviderError,
   listCatalog,
   resolveModel,
@@ -10,11 +12,17 @@ import {
   composeCapabilityInstructions,
   composeHistoryContext,
   composeSystemPrompt,
+  composeTitleMessages,
   withSystemPrompt,
 } from "@/lib/prompt";
 import { embedText, toVectorLiteral } from "@/lib/providers/embeddings";
 import { createClient } from "@/lib/supabase/server";
-import { titleFromMessage } from "@/lib/utils";
+import {
+  DEFAULT_CHAT_TITLE,
+  isSmallTalk,
+  normalizeTitle,
+  titleFromMessage,
+} from "@/lib/utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,6 +38,43 @@ const MAX_FALLBACKS = 2;
 const AUTO_EXCLUDED_PROVIDERS = new Set(["puter"]);
 /** Puter replies allowed per account per calendar month. */
 const PUTER_MONTHLY_LIMIT = Number(process.env.PUTER_MONTHLY_LIMIT) || 50;
+/** Budget for the one-off title pass: a handful of words, so this is plenty. */
+const TITLE_MAX_TOKENS = 24;
+
+/**
+ * Summarises a chat's first exchange into a short title, using the same
+ * provider that answered. Falls back to the opening message (and, for a chat
+ * with no real topic yet, to the placeholder) when the pass is unusable.
+ */
+async function generateChatTitle(
+  target: ReturnType<typeof resolveModel>,
+  userMessage: string,
+  assistantMessage: string,
+  signal: AbortSignal,
+) {
+  if (isSmallTalk(userMessage) && assistantMessage.trim().length < 40) {
+    return DEFAULT_CHAT_TITLE;
+  }
+
+  try {
+    let raw = "";
+    for await (const event of target.provider.streamChat({
+      model: target.model,
+      messages: composeTitleMessages(userMessage, assistantMessage),
+      temperature: 0.2,
+      maxTokens: TITLE_MAX_TOKENS,
+      signal,
+    })) {
+      if (event.type === "delta") raw += event.text;
+    }
+    const title = normalizeTitle(raw);
+    if (title && title !== DEFAULT_CHAT_TITLE) return title;
+  } catch (err) {
+    console.error("[ugnay] Could not generate a chat title:", err);
+  }
+
+  return titleFromMessage(userMessage);
+}
 
 /**
  * Other configured models, nearest first: same provider before a different one,
@@ -127,12 +172,15 @@ export async function POST(request: NextRequest) {
     provider: string | null;
     model: string | null;
     system_prompt: string | null;
+    project_id: string | null;
   } | null = null;
+  /** Instructions from the workspace this chat belongs to, if any. */
+  let projectInstructions: string | null = null;
 
   if (!temporary) {
     const { data, error: chatError } = await supabase
       .from("chats")
-      .select("id, title, provider, model, system_prompt")
+      .select("id, title, provider, model, system_prompt, project_id")
       .eq("id", chatId!)
       .eq("user_id", user.id)
       .single();
@@ -142,6 +190,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Chat not found." }, { status: 404 });
     }
     chat = data;
+
+    // A workspace's instructions apply to every conversation inside it.
+    if (chat.project_id) {
+      const { data: project, error: projectError } = await supabase
+        .from("projects")
+        .select("instructions")
+        .eq("id", chat.project_id)
+        .maybeSingle();
+      if (projectError) {
+        console.error("[ugnay] /api/chat could not load the workspace:", projectError);
+      } else {
+        projectInstructions = project?.instructions?.trim() || null;
+      }
+    }
   }
 
   const { data: settings } = await supabase
@@ -226,10 +288,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Could not save your message." }, { status: 500 });
     }
     savedUserId = savedUser.id;
-
-    if (!chat!.title || chat!.title === "New chat") {
-      await supabase.from("chats").update({ title: titleFromMessage(content) }).eq("id", chatId!);
-    }
   }
 
   // Optional cross-chat memory. Scoped to this user's own rows (and RLS), and
@@ -314,7 +372,7 @@ export async function POST(request: NextRequest) {
 
   const systemPrompt = composeSystemPrompt(
     [settings?.global_system_prompt, historyContext].filter(Boolean).join("\n\n"),
-    chat?.system_prompt,
+    [projectInstructions, chat?.system_prompt].filter(Boolean).join("\n\n") || null,
     composeCapabilityInstructions({ thinking: thinking !== null, webSearch }),
   );
   const conversation: ProviderMessage[] = withSystemPrompt(
@@ -336,13 +394,19 @@ export async function POST(request: NextRequest) {
 
       // The chosen model first, then other configured ones as fallbacks for a
       // busy or failing upstream (e.g. "Service temporarily overloaded").
+      // Switching model is only ever done for Auto, which is a request to pick
+      // a working model; an explicitly chosen model is never swapped silently —
+      // the user is asked to choose another one instead.
       const wantsExtras = thinking !== null || webSearch;
+      const isAuto = provider.id === DEFAULT_PROVIDER && model === DEFAULT_MODEL;
       const attempts = [
         { provider, model, extras: true },
         // Retry the SAME model without the optional extras: some upstreams
         // reject `reasoning`/web plugins and answer "Provider returned error".
         ...(wantsExtras ? [{ provider, model, extras: false }] : []),
-        ...fallbackTargets(provider.id, model).map((target) => ({ ...target, extras: false })),
+        ...(isAuto
+          ? fallbackTargets(provider.id, model).map((target) => ({ ...target, extras: false }))
+          : []),
       ];
 
       try {
@@ -409,6 +473,7 @@ export async function POST(request: NextRequest) {
           send({
             type: "error",
             error: "The model returned an empty response. Try again or pick another model.",
+            ...(isAuto ? {} : { action: "change-model" }),
           });
           return;
         }
@@ -453,12 +518,30 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // Named from the first real exchange, not from the opening line alone,
+        // and only while the chat still carries the placeholder title.
+        if (!chat!.title || chat!.title === DEFAULT_CHAT_TITLE) {
+          const title = await generateChatTitle(
+            { provider, model },
+            content,
+            text,
+            abort.signal,
+          );
+          if (title !== DEFAULT_CHAT_TITLE) {
+            await supabase.from("chats").update({ title }).eq("id", chatId!);
+          }
+        }
+
         send({ type: "done", assistantMessageId: saved?.id ?? null, usage });
       } catch (err) {
         const message =
           err instanceof ProviderError
             ? err.message
             : "Something went wrong while generating a response.";
+        // Nothing streamed from a model the user picked themselves: the turn
+        // stops here, so the client offers the model selector rather than
+        // quietly answering with a different model.
+        const changeModel = !isAuto && !text;
 
         // Keep whatever streamed successfully before the failure.
         if (text && !temporary) {
@@ -471,7 +554,13 @@ export async function POST(request: NextRequest) {
             model,
           });
         }
-        send({ type: "error", error: message });
+        send({
+          type: "error",
+          error: changeModel
+            ? `${message} This model could not respond — pick another one and try again.`
+            : message,
+          ...(changeModel ? { action: "change-model" } : {}),
+        });
       } finally {
         controller.close();
       }

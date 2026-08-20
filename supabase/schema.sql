@@ -26,6 +26,27 @@ create table if not exists public.chats (
 );
 create index if not exists chats_user_updated_idx on public.chats (user_id, updated_at desc);
 
+-- ---------------------------------------------------------------- projects
+-- Workspaces: named folders a chat can belong to. A chat with no project_id is
+-- a plain conversation and shows under History.
+create table if not exists public.projects (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  name       text not null check (char_length(name) between 1 and 80),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists projects_user_created_idx on public.projects (user_id, created_at desc);
+
+-- Instructions every conversation in the workspace is answered with.
+alter table public.projects
+  add column if not exists instructions text not null default '';
+
+-- Deleting a workspace keeps its conversations; they fall back to History.
+alter table public.chats
+  add column if not exists project_id uuid references public.projects(id) on delete set null;
+create index if not exists chats_project_idx on public.chats (project_id);
+
 -- ---------------------------------------------------------------- messages
 create table if not exists public.messages (
   id                uuid primary key default gen_random_uuid(),
@@ -141,6 +162,19 @@ create table if not exists public.message_feedback (
 );
 create index if not exists message_feedback_chat_idx on public.message_feedback (chat_id);
 
+-- ------------------------------------------------------ product feedback
+-- Free-form feedback sent from the Feedback page. One row per submission, kept
+-- so it can be read back by the account that sent it.
+create table if not exists public.app_feedback (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  kind       text not null check (kind in ('idea', 'bug', 'other')),
+  message    text not null check (char_length(message) between 1 and 4000),
+  created_at timestamptz not null default now()
+);
+create index if not exists app_feedback_user_created_idx
+  on public.app_feedback (user_id, created_at desc);
+
 -- ------------------------------------------------------------- updated_at
 create or replace function public.touch_updated_at()
 returns trigger language plpgsql as $$
@@ -151,6 +185,10 @@ end $$;
 
 drop trigger if exists profiles_touch on public.profiles;
 create trigger profiles_touch before update on public.profiles
+  for each row execute function public.touch_updated_at();
+
+drop trigger if exists projects_touch on public.projects;
+create trigger projects_touch before update on public.projects
   for each row execute function public.touch_updated_at();
 
 drop trigger if exists chats_touch on public.chats;
@@ -199,22 +237,29 @@ create trigger on_auth_user_created after insert on auth.users
 -- --------------------------------------------------------------------- RLS
 alter table public.profiles      enable row level security;
 alter table public.chats         enable row level security;
+alter table public.projects      enable row level security;
 alter table public.messages      enable row level security;
 alter table public.user_settings enable row level security;
 alter table public.message_embeddings enable row level security;
 alter table public.message_feedback enable row level security;
+alter table public.app_feedback enable row level security;
 
 drop policy if exists "profiles: own row"      on public.profiles;
 drop policy if exists "chats: own rows"        on public.chats;
+drop policy if exists "projects: own rows"     on public.projects;
 drop policy if exists "messages: own rows"     on public.messages;
 drop policy if exists "settings: own row"      on public.user_settings;
 drop policy if exists "embeddings: own rows"   on public.message_embeddings;
 drop policy if exists "feedback: own rows"      on public.message_feedback;
+drop policy if exists "app feedback: own rows"  on public.app_feedback;
 
 create policy "profiles: own row" on public.profiles
   for all to authenticated using (auth.uid() = id) with check (auth.uid() = id);
 
 create policy "chats: own rows" on public.chats
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "projects: own rows" on public.projects
   for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- A message is reachable only if it is owned by the caller AND its chat is too.
@@ -236,4 +281,7 @@ create policy "embeddings: own rows" on public.message_embeddings
   for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 create policy "feedback: own rows" on public.message_feedback
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "app feedback: own rows" on public.app_feedback
   for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);

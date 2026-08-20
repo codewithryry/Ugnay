@@ -18,6 +18,19 @@ export interface Chat {
   provider: string;
   model: string;
   system_prompt: string | null; // per-chat override
+  /** Workspace this chat belongs to; null for a plain conversation. */
+  project_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A workspace: a named folder for conversations. */
+export interface Project {
+  id: string;
+  user_id: string;
+  name: string;
+  /** Applied to every conversation in this workspace. */
+  instructions: string;
   created_at: string;
   updated_at: string;
 }

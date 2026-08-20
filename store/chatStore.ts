@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { titleFromMessage } from "@/lib/utils";
 import { BUILTIN_PRESETS } from "@/lib/presets";
 import { isUnrecoverableAuthError } from "@/lib/supabase/auth-errors";
-import type { Chat, Message, Preset, UserSettings } from "@/types/db";
+import type { Chat, Message, Preset, Project, UserSettings } from "@/types/db";
 
 export interface ModelInfoLite {
   id: string;
@@ -30,6 +30,11 @@ export const DEFAULT_MODEL = "openrouter/free";
 interface ChatState {
   userId: string | null;
   chats: Chat[];
+  projects: Project[];
+  /** Workspace new conversations are created in; null means History. */
+  activeProjectId: string | null;
+  /** Workspace whose panel is open beside the conversation; null when closed. */
+  panelProjectId: string | null;
   messagesByChat: Record<string, Message[]>;
   activeChatId: string | null;
   settings: UserSettings | null;
@@ -58,12 +63,23 @@ interface ChatState {
   streaming: boolean;
   streamingChatId: string | null;
   error: string | null;
+  /** Set when the error needs the model selector rather than a retry. */
+  errorAction: "change-model" | null;
+  /** Bumped to ask the model selector to open itself. */
+  modelPickerRequests: number;
   sidebarOpen: boolean;
 
   init: (userId: string) => Promise<void>;
   loadMessages: (chatId: string) => Promise<void>;
   setActiveChat: (chatId: string | null) => Promise<void>;
   newChat: () => void;
+  createProject: (name: string) => Promise<void>;
+  renameProject: (projectId: string, name: string) => Promise<void>;
+  saveProject: (projectId: string, patch: { name?: string; instructions?: string }) => Promise<void>;
+  deleteProject: (projectId: string) => Promise<void>;
+  setActiveProject: (projectId: string | null) => Promise<void>;
+  newChatInProject: (projectId: string) => void;
+  setPanelProject: (projectId: string | null) => void;
   renameChat: (chatId: string, title: string) => Promise<void>;
   deleteChat: (chatId: string) => Promise<void>;
   setChatSystemPrompt: (chatId: string, prompt: string | null) => Promise<void>;
@@ -80,6 +96,7 @@ interface ChatState {
   setShowThinking: (on: boolean) => void;
   setWebSearch: (on: boolean) => void;
   setError: (error: string | null) => void;
+  openModelPicker: () => void;
 }
 
 let abortController: AbortController | null = null;
@@ -116,6 +133,9 @@ function sortChats(chats: Chat[]) {
 export const useChatStore = create<ChatState>((set, get) => ({
   userId: null,
   chats: [],
+  projects: [],
+  activeProjectId: null,
+  panelProjectId: null,
   messagesByChat: {},
   activeChatId: null,
   settings: null,
@@ -133,14 +153,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
   streaming: false,
   streamingChatId: null,
   error: null,
+  errorAction: null,
+  modelPickerRequests: 0,
   sidebarOpen: false,
 
   async init(userId) {
     const supabase = createClient();
     set({ userId });
 
-    const [chatsRes, settingsRes, catalogRes] = await Promise.all([
+    const [chatsRes, projectsRes, settingsRes, catalogRes] = await Promise.all([
       supabase.from("chats").select("*").order("updated_at", { ascending: false }),
+      supabase.from("projects").select("*").order("created_at", { ascending: true }),
       supabase.from("user_settings").select("*").eq("user_id", userId).maybeSingle(),
       fetch("/api/models")
         .then((r) => (r.ok ? r.json() : null))
@@ -152,6 +175,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return;
     }
     if (chatsRes.error) reportSupabaseError("load your chats", chatsRes.error);
+    if (projectsRes.error) reportSupabaseError("load your workspaces", projectsRes.error);
     if (settingsRes.error) reportSupabaseError("load your settings", settingsRes.error);
 
     let settings = settingsRes.data as UserSettings | null;
@@ -168,14 +192,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const chats = (chatsRes.data ?? []) as Chat[];
     set({
       chats,
+      projects: (projectsRes.data ?? []) as Project[],
       settings,
       catalog: catalogRes?.providers ?? [],
-      provider: chats[0]?.provider ?? settings?.default_provider ?? DEFAULT_PROVIDER,
-      model: chats[0]?.model ?? settings?.default_model ?? DEFAULT_MODEL,
+      provider: settings?.default_provider ?? DEFAULT_PROVIDER,
+      model: settings?.default_model ?? DEFAULT_MODEL,
       hydrated: true,
     });
 
-    if (chats.length) await get().setActiveChat(chats[0].id);
+    // No conversation is selected here on purpose: a chat is only opened when
+    // the user clicks it or the route names one (/?chat=<id>).
   },
 
   async loadMessages(chatId) {
@@ -217,7 +243,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ activeChatId: chatId, error: null, sidebarOpen: false });
     if (!chatId) return;
     const chat = get().chats.find((c) => c.id === chatId);
-    if (chat) set({ provider: chat.provider, model: chat.model });
+    if (chat) {
+      set({ provider: chat.provider, model: chat.model, activeProjectId: chat.project_id });
+    }
     if (!get().messagesByChat[chatId]) await get().loadMessages(chatId);
   },
 
@@ -225,6 +253,128 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const { settings, temporaryChat } = get();
     if (temporaryChat) get().setTemporaryChat(false);
     set({
+      activeChatId: null,
+      activeProjectId: null,
+      error: null,
+      sidebarOpen: false,
+      provider: settings?.default_provider ?? DEFAULT_PROVIDER,
+      model: settings?.default_model ?? DEFAULT_MODEL,
+    });
+  },
+
+  async createProject(name) {
+    const clean = name.trim();
+    const { userId } = get();
+    if (!clean || !userId) return;
+
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("projects")
+      .insert({ user_id: userId, name: clean })
+      .select("*")
+      .single();
+
+    if (error || !data) {
+      set({ error: reportSupabaseError("create this workspace", error) });
+      if (isUnrecoverableAuthError(error)) void recoverFromAuthFailure();
+      return;
+    }
+
+    // New workspaces open empty, ready for their first conversation.
+    set((s) => ({
+      projects: [...s.projects, data as Project],
+      activeProjectId: (data as Project).id,
+      activeChatId: null,
+      error: null,
+    }));
+  },
+
+  async renameProject(projectId, name) {
+    const clean = name.trim();
+    if (!clean) return;
+    const previous = get().projects;
+    set({
+      projects: previous.map((p) => (p.id === projectId ? { ...p, name: clean } : p)),
+    });
+
+    const supabase = createClient();
+    const { error } = await supabase.from("projects").update({ name: clean }).eq("id", projectId);
+    if (error) {
+      set({ projects: previous, error: reportSupabaseError("rename this workspace", error) });
+    }
+  },
+
+  /** Workspace settings: the name and the instructions its chats are answered with. */
+  async saveProject(projectId, patch) {
+    const name = patch.name?.trim();
+    const instructions = patch.instructions?.trim();
+    const update: { name?: string; instructions?: string } = {};
+    if (name) update.name = name;
+    if (patch.instructions !== undefined) update.instructions = instructions ?? "";
+    if (Object.keys(update).length === 0) return;
+
+    const previous = get().projects;
+    set({ projects: previous.map((p) => (p.id === projectId ? { ...p, ...update } : p)) });
+
+    const supabase = createClient();
+    const { error } = await supabase.from("projects").update(update).eq("id", projectId);
+    if (error) {
+      set({ projects: previous, error: reportSupabaseError("save this workspace", error) });
+    }
+  },
+
+  async deleteProject(projectId) {
+    const { projects, chats, activeProjectId } = get();
+    const remaining = projects.filter((p) => p.id !== projectId);
+    // The conversations survive: the column is cleared, so they move to History.
+    set({
+      projects: remaining,
+      chats: chats.map((c) => (c.project_id === projectId ? { ...c, project_id: null } : c)),
+      activeProjectId: activeProjectId === projectId ? null : activeProjectId,
+      panelProjectId: get().panelProjectId === projectId ? null : get().panelProjectId,
+    });
+
+    const supabase = createClient();
+    const { error } = await supabase.from("projects").delete().eq("id", projectId);
+    if (error) {
+      set({ projects, chats, error: reportSupabaseError("delete this workspace", error) });
+    }
+  },
+
+  setPanelProject(projectId) {
+    set({ panelProjectId: projectId, sidebarOpen: false });
+  },
+
+  /**
+   * Opens a workspace: new conversations go into it, and its most recent
+   * conversation is reopened so the transcript is right there. Only a workspace
+   * with no conversations yet lands on an empty composer.
+   */
+  async setActiveProject(projectId) {
+    set({ activeProjectId: projectId, error: null, sidebarOpen: false });
+    if (!projectId) return;
+
+    const { activeChatId, chats } = get();
+    const current = chats.find((c) => c.id === activeChatId);
+    if (current?.project_id === projectId) return;
+
+    // chats is kept newest-first, so the first match is the latest.
+    const latest = chats.find((c) => c.project_id === projectId);
+    if (!latest) {
+      set({ activeChatId: null });
+      return;
+    }
+    await get().setActiveChat(latest.id);
+    // setActiveChat re-reads the project from the chat; keep this one open.
+    set({ activeProjectId: projectId });
+  },
+
+  /** The "+" on a workspace row: a fresh conversation inside that workspace. */
+  newChatInProject(projectId) {
+    const { settings } = get();
+    if (get().temporaryChat) get().setTemporaryChat(false);
+    set({
+      activeProjectId: projectId,
       activeChatId: null,
       error: null,
       sidebarOpen: false,
@@ -316,7 +466,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const { userId, provider, model, thinking, webSearch } = get();
     if (!userId) return;
 
-    set({ error: null });
+    set({ error: null, errorAction: null });
     const temporary = get().temporaryChat;
     let chatId = temporary ? TEMPORARY_CHAT_ID : get().activeChatId;
 
@@ -325,7 +475,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (!chatId) {
       const { data, error } = await supabase
         .from("chats")
-        .insert({ user_id: userId, title: "New chat", provider, model })
+        .insert({
+          user_id: userId,
+          title: "New chat",
+          provider,
+          model,
+          project_id: get().activeProjectId,
+        })
         .select("*")
         .single();
 
@@ -437,6 +593,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const decoder = new TextDecoder();
       let buffer = "";
       let streamError: string | null = null;
+      let streamErrorAction: "change-model" | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -458,13 +615,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
           if (event.type === "delta") appendDelta(event.text);
           else if (event.type === "reasoning") appendReasoning(event.text);
-          else if (event.type === "error") streamError = event.error;
+          else if (event.type === "error") {
+            streamError = event.error;
+            streamErrorAction = event.action === "change-model" ? "change-model" : null;
+          }
           // A fallback kicked in: tell the user which model answered instead.
           else if (event.type === "notice") set({ error: event.notice });
         }
       }
 
-      if (streamError) set({ error: streamError });
+      if (streamError) set({ error: streamError, errorAction: streamErrorAction });
 
       // Swap the optimistic rows for the persisted ones. A temporary chat has
       // none, so its in-memory transcript stays exactly as streamed.
@@ -647,7 +807,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   setError(error) {
-    set({ error });
+    set({ error, errorAction: error ? get().errorAction : null });
+  },
+
+  openModelPicker() {
+    set((s) => ({ modelPickerRequests: s.modelPickerRequests + 1 }));
   },
 }));
 

@@ -5,9 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import ChatWindow from "./ChatWindow";
 import SearchOverlay from "./SearchOverlay";
 import SettingsPanel from "./SettingsPanel";
+import WorkspacePanel from "./WorkspacePanel";
 import Sidebar from "./Sidebar";
 import { applyTheme } from "@/lib/theme";
-import { useChatStore } from "@/store/chatStore";
+import { DEFAULT_CHAT_TITLE } from "@/lib/utils";
+import { TEMPORARY_CHAT_ID, useChatStore } from "@/store/chatStore";
 
 export interface CurrentUser {
   userId: string;
@@ -40,6 +42,10 @@ export default function ChatApp(props: {
   const notifyOnFinish = useChatStore((s) => s.settings?.notify_on_finish ?? false);
   const wasStreaming = useRef(false);
   const theme = useChatStore((s) => s.settings?.theme ?? "dark");
+  const activeChatId = useChatStore((s) => s.activeChatId);
+  const activeChatTitle = useChatStore(
+    (s) => s.chats.find((c) => c.id === s.activeChatId)?.title ?? null,
+  );
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedChat = searchParams.get("chat");
@@ -48,7 +54,8 @@ export default function ChatApp(props: {
     void init(props.userId);
   }, [init, props.userId]);
 
-  // A shared link (/?chat=<id>) opens that conversation once the store is ready.
+  // A link that names a chat (/?chat=<id>) opens that conversation once the
+  // store is ready. Nothing is opened when the route names no chat.
   useEffect(() => {
     if (!hydrated || !requestedChat) return;
     const { chats, activeChatId, setActiveChat } = useChatStore.getState();
@@ -56,6 +63,24 @@ export default function ChatApp(props: {
       void setActiveChat(requestedChat);
     }
   }, [hydrated, requestedChat]);
+
+  // The route mirrors the open conversation, so a refresh reopens exactly it —
+  // and stays on the empty new-chat state when no chat is open.
+  useEffect(() => {
+    if (!hydrated || props.view === "search") return;
+    // A temporary chat has no row, so it is never named in the route.
+    const routed = activeChatId === TEMPORARY_CHAT_ID ? null : activeChatId;
+    if (routed === requestedChat) return;
+    router.replace(routed ? `/?chat=${routed}` : "/", { scroll: false });
+  }, [hydrated, activeChatId, requestedChat, props.view, router]);
+
+  // The tab follows the open conversation, using its generated title. Set from
+  // the client because the title is only known once the store has it.
+  useEffect(() => {
+    const title = activeChatTitle?.trim();
+    document.title =
+      activeChatId && title && title !== DEFAULT_CHAT_TITLE ? `${title} | Ugnay` : "Ugnay";
+  }, [activeChatId, activeChatTitle]);
 
   useEffect(() => {
     applyTheme(theme);
@@ -115,6 +140,9 @@ export default function ChatApp(props: {
       />
 
       <ChatWindow user={user} hydrated={hydrated} />
+
+      {/* Workspace settings and instructions, beside the conversation. */}
+      <WorkspacePanel />
 
       {/* /search keeps the chat behind it, like a command palette. */}
       {props.view === "search" && <SearchOverlay onClose={() => router.push("/")} />}

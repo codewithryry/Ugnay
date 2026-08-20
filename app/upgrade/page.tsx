@@ -1,6 +1,6 @@
 import PricingPlans from "@/components/PricingPlans";
 
-export const metadata = { title: "Upgrade plan · Ugnay" };
+export const metadata = { title: "Upgrade plan" };
 
 export default function UpgradePage() {
   return (

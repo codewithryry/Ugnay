@@ -25,7 +25,7 @@ const DESCRIPTION =
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: { default: "Ugnay — AI chat app", template: "%s · Ugnay" },
+  title: { default: "Ugnay", template: "%s | Ugnay" },
   description: DESCRIPTION,
   applicationName: "Ugnay",
   keywords: [

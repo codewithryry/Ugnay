@@ -29,9 +29,9 @@ import { cn } from "@/lib/utils";
  * URL in and it becomes a real link with no other change.
  */
 const HELP_ITEMS: { key: string; label: string; icon: LucideIcon; href: string | null }[] = [
-  { key: "feedback", label: "Feedback", icon: Flag, href: null },
-  { key: "faq", label: "FAQ", icon: HelpCircle, href: null },
-  { key: "release-notes", label: "Release Notes", icon: History, href: null },
+  { key: "feedback", label: "Feedback", icon: Flag, href: "/feedback" },
+  { key: "faq", label: "FAQ", icon: HelpCircle, href: "/faq" },
+  { key: "release-notes", label: "Release Notes", icon: History, href: "/release-notes" },
   { key: "community", label: "Community", icon: Users, href: null },
   { key: "shared-links", label: "Shared Links", icon: Share2, href: null },
 ];
@@ -142,7 +142,13 @@ export default function AccountMenu({
           <div
             role="menu"
             aria-label="Account"
-            className="absolute bottom-[calc(100%+0.5rem)] left-2 right-2 z-20 max-h-[70dvh] space-y-0.5 overflow-y-auto overscroll-contain rounded-xl border border-ink-700 bg-ink-850 p-1.5 shadow-2xl"
+            className={cn(
+              "absolute bottom-[calc(100%+0.5rem)] left-2 right-2 z-20 max-h-[70dvh] space-y-0.5 overflow-y-auto overscroll-contain rounded-xl border border-ink-700 bg-ink-850 p-1.5 shadow-2xl",
+              // The collapsed rail is only ~68px wide, which would squeeze the
+              // labels onto several lines; the menu keeps its own width there
+              // and opens across the conversation instead.
+              compact && "md:left-0 md:right-auto md:w-52",
+            )}
           >
             <button
               role="menuitem"
@@ -282,7 +288,11 @@ export default function AccountMenu({
         onClick={() => (open ? close() : setOpen(true))}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left hover:bg-ink-800"
+        className={cn(
+          "flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left hover:bg-ink-800",
+          // Collapsed: a centred square target matching the rows above it.
+          compact && "md:h-10 md:justify-center md:gap-0 md:px-0 md:py-0",
+        )}
       >
         <UserAvatar name={user.displayName} src={user.avatarUrl} />
         <span className={cn("min-w-0 flex-1", compact && "md:hidden")}>
@@ -298,7 +308,8 @@ export default function AccountMenu({
   );
 }
 
-function SoonTag() {
+/** Shared with the sidebar so pending rows look the same in both places. */
+export function SoonTag() {
   return (
     <span className="ml-auto rounded bg-ink-800 px-1.5 py-0.5 text-[10px] text-neutral-600">
       Soon

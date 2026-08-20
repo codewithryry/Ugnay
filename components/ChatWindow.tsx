@@ -24,6 +24,8 @@ export default function ChatWindow({
   const loadingMessages = useChatStore((s) => s.loadingMessages);
   const streaming = useChatStore((s) => s.streaming);
   const error = useChatStore((s) => s.error);
+  const errorAction = useChatStore((s) => s.errorAction);
+  const openModelPicker = useChatStore((s) => s.openModelPicker);
   const setError = useChatStore((s) => s.setError);
   const setSidebarOpen = useChatStore((s) => s.setSidebarOpen);
 
@@ -128,6 +130,18 @@ export default function ChatWindow({
         >
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
           <span className="flex-1">{error}</span>
+          {errorAction === "change-model" && (
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                openModelPicker();
+              }}
+              className="shrink-0 rounded-lg border border-red-900/60 px-2 py-1 text-[11px] text-red-100 transition hover:bg-red-950/60"
+            >
+              Change model
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setError(null)}
@@ -232,7 +246,7 @@ function EmptyState({
   useEffect(() => {
     // The previous pick is remembered across reloads, so a line never repeats
     // back to back even on a fresh page load.
-    let previous: { headline: string } | null = null;
+    let previous: { headline: string; subtitle: string } | null = null;
     try {
       const stored = localStorage.getItem(GREETING_STORAGE_KEY);
       if (stored) previous = JSON.parse(stored);

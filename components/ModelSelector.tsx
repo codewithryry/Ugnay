@@ -33,6 +33,7 @@ export default function ModelSelector() {
   const setModel = useChatStore((s) => s.setModel);
 
   const activeChatId = useChatStore((s) => s.activeChatId);
+  const modelPickerRequests = useChatStore((s) => s.modelPickerRequests);
   const messageCount = useChatStore((s) =>
     activeChatId ? (s.messagesByChat[activeChatId]?.length ?? 0) : 0,
   );
@@ -45,6 +46,14 @@ export default function ModelSelector() {
   const moreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const moreRowRef = useRef<HTMLButtonElement>(null);
   const [moreSide, setMoreSide] = useState<"left" | "right">("right");
+  /** Fixed coordinates for the flyout, measured off the "More models" row.
+   * The menu scrolls (overflow-y-auto), which clips an absolutely positioned
+   * flyout, so from sm up it is rendered fixed like the menu itself. */
+  const [morePos, setMorePos] = useState<{
+    bottom: number;
+    left?: number;
+    right?: number;
+  } | null>(null);
 
   /**
    * Chooses the flyout side: the preferred side first (right on the empty New
@@ -67,11 +76,30 @@ export default function ModelSelector() {
     const fitsLeft = spaceLeft >= width;
     const preferred: "left" | "right" = inConversation ? "left" : "right";
 
-    if (preferred === "right") {
-      setMoreSide(fitsRight ? "right" : fitsLeft ? "left" : spaceRight >= spaceLeft ? "right" : "left");
-    } else {
-      setMoreSide(fitsLeft ? "left" : fitsRight ? "right" : spaceLeft >= spaceRight ? "left" : "right");
-    }
+    const side: "left" | "right" =
+      preferred === "right"
+        ? fitsRight
+          ? "right"
+          : fitsLeft
+            ? "left"
+            : spaceRight >= spaceLeft
+              ? "right"
+              : "left"
+        : fitsLeft
+          ? "left"
+          : fitsRight
+            ? "right"
+            : spaceLeft >= spaceRight
+              ? "left"
+              : "right";
+    setMoreSide(side);
+    // Bottom edge aligned with the row it opens from, matching the in-menu look.
+    setMorePos({
+      bottom: window.innerHeight - rect.bottom,
+      ...(side === "right"
+        ? { left: rect.right + FLYOUT_OFFSET }
+        : { right: window.innerWidth - rect.left + FLYOUT_OFFSET }),
+    });
   }
 
   // The flyout sits a little away from the row, so closing is delayed while the
@@ -101,6 +129,14 @@ export default function ModelSelector() {
       right: Math.min(Math.max(VIEWPORT_MARGIN, window.innerWidth - rect.right), maxRight),
     });
   }
+
+  // "Change model" on a failed turn opens this menu, so the user picks another
+  // model where they already pick one.
+  useEffect(() => {
+    if (!modelPickerRequests) return;
+    place();
+    setOpen(true);
+  }, [modelPickerRequests]);
 
   useEffect(() => {
     if (!open) {
@@ -229,8 +265,9 @@ export default function ModelSelector() {
                     style={
                       {
                         "--flyout-offset": `${FLYOUT_OFFSET}px`,
-                        [moreSide === "right" ? "left" : "right"]:
-                          "calc(100% + var(--flyout-offset))",
+                        "--flyout-bottom": `${morePos?.bottom ?? 0}px`,
+                        "--flyout-left": morePos?.left != null ? `${morePos.left}px` : "auto",
+                        "--flyout-right": morePos?.right != null ? `${morePos.right}px` : "auto",
                       } as React.CSSProperties
                     }
                     className={cn(
@@ -242,7 +279,9 @@ export default function ModelSelector() {
                       // once. bottom-0 aligns its bottom edge with the "More
                       // models" row it opens from, so it neither floats above
                       // the menu nor covers the rows below it.
-                      "sm:absolute sm:bottom-0 sm:mt-0 sm:max-h-none sm:grid-flow-col sm:auto-cols-[12.5rem] sm:gap-x-3 sm:overflow-visible",
+                      // Fixed, not absolute: the menu scrolls, and an absolute
+                      // flyout is clipped by that overflow.
+                      "sm:fixed sm:z-[80] sm:bottom-[var(--flyout-bottom)] sm:left-[var(--flyout-left)] sm:right-[var(--flyout-right)] sm:mt-0 sm:max-h-none sm:grid-flow-col sm:auto-cols-[12.5rem] sm:gap-x-3 sm:overflow-visible",
                       "rounded-xl border border-ink-700 bg-ink-850 p-1.5 shadow-2xl animate-fade-in",
                       // Invisible hover bridge spanning the gap back to the menu,
                       // so travelling across the empty space never drops :hover.

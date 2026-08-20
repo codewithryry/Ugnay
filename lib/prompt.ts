@@ -92,3 +92,37 @@ export function withSystemPrompt(
   const body = messages.filter((m) => m.role !== "system");
   return systemPrompt ? [{ role: "system", content: systemPrompt }, ...body] : body;
 }
+
+/**
+ * Prompt for the short title pass that runs once, after a chat's first
+ * exchange. Written strictly because a model left to itself tends to echo the
+ * user's opening line back as the title.
+ */
+export function composeTitleMessages(
+  userMessage: string,
+  assistantMessage: string,
+): ProviderMessage[] {
+  return [
+    {
+      role: "system",
+      content: [
+        "You name chat conversations. Read the exchange and reply with a title for it —",
+        "nothing else: no quotes, no punctuation at the end, no explanation.",
+        "Summarise the topic or what the user is trying to do, in 2 to 6 words,",
+        "in Title Case, in the language the user is writing in.",
+        "Never copy the user's sentence verbatim, and never keep greetings, filler,",
+        "typos or question wording — describe the subject instead.",
+        'Example: "why i got this error 17:35??" → "Troubleshooting Error 17:35".',
+        'Example: "hi try this model" → "Trying A New Model".',
+        'If the exchange has no identifiable topic, reply with exactly: New chat.',
+      ].join(" "),
+    },
+    {
+      role: "user",
+      content: [
+        `User: ${userMessage.replace(/\s+/g, " ").slice(0, 1200)}`,
+        `Assistant: ${assistantMessage.replace(/\s+/g, " ").slice(0, 1200)}`,
+      ].join("\n"),
+    },
+  ];
+}
