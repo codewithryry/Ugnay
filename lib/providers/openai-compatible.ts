@@ -73,33 +73,30 @@ export async function* streamOpenAICompatible(opts: {
   }
 
   if (!res.ok || !res.body) {
-    const detail = await safeErrorMessage(res);
-    // A rejected key reads as an account error upstream (OpenRouter answers
-    // 401 "User not found."), which is misleading in the chat. Name the real
-    // problem instead of forwarding that text.
+    // Logged, never returned: the upstream text can name the account or the
+    // server's configuration. The caller only ever sees a generic message.
+    const detail = await upstreamDetail(res);
+    console.error(`[ugnay] ${providerId} upstream ${res.status}: ${detail}`);
+
+    // A rejected key is a server misconfiguration, not something the visitor
+    // can act on, so it reads as an unavailable model.
     if (res.status === 401 || res.status === 403) {
-      console.error(`[ugnay] ${providerId} rejected the API key: ${detail}`);
-      throw new ProviderError(
-        `${providerId} rejected the server's API key. Set a valid key for ${providerId} and restart.`,
-        res.status,
-        providerId,
-      );
+      throw new ProviderError("This model is unavailable right now.", res.status, providerId);
     }
 
     const retryable = isRetryableStatus(res.status);
     if (retryable) {
       // Upstream capacity problems ("Service temporarily overloaded", 429, 5xx)
       // are transient and read better as a busy model than as a raw API error.
-      console.error(`[ugnay] ${providerId} upstream ${res.status}: ${detail}`);
       throw new ProviderError(
-        `The model is busy right now (${detail}).`,
+        "The model is busy right now.",
         res.status || 503,
         providerId,
         true,
       );
     }
 
-    throw new ProviderError(detail, res.status || 502, providerId);
+    throw new ProviderError("This model could not answer. Please try again.", res.status || 502, providerId);
   }
 
   const reader = res.body.getReader();
@@ -190,12 +187,17 @@ export async function* streamOpenAICompatible(opts: {
   yield { type: "done" };
 }
 
-async function safeErrorMessage(res: Response): Promise<string> {
+/**
+ * The upstream failure reason, for the server log only. Provider bodies can
+ * carry account identifiers and internal configuration, so this never reaches
+ * the browser — callers pair it with a generic ProviderError message.
+ */
+async function upstreamDetail(res: Response): Promise<string> {
   try {
     const body = await res.text();
     const json = JSON.parse(body);
-    return json?.error?.message ?? json?.message ?? body.slice(0, 300);
+    return String(json?.error?.message ?? json?.message ?? body).slice(0, 300);
   } catch {
-    return `Upstream provider responded with ${res.status}.`;
+    return `no readable body (status ${res.status})`;
   }
 }

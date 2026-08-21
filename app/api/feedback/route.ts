@@ -10,7 +10,7 @@ const MESSAGE_LIMIT = 4000;
 
 /** Stores one feedback submission for the signed-in account. */
 export async function POST(request: NextRequest) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

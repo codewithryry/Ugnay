@@ -5,7 +5,8 @@ import { supabaseEnv } from "./env";
 
 // The manifest is a generated route, so it passes through the middleware and
 // must stay reachable without a session or installing the PWA fails.
-const PUBLIC_PATHS = ["/login", "/auth", "/manifest.webmanifest"];
+// "/s" is the read-only shared-conversation view, which must open for anyone.
+const PUBLIC_PATHS = ["/login", "/auth", "/s/", "/manifest.webmanifest"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -46,7 +47,9 @@ export async function updateSession(request: NextRequest) {
   // Route handlers answer with their own 401 JSON rather than an HTML redirect.
   if (pathname.startsWith("/api/")) return response;
 
-  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+  // The landing New Chat is reachable signed out. Matched exactly, because
+  // PUBLIC_PATHS is a prefix list and "/" there would expose every route.
+  const isPublic = pathname === "/" || PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
   if (!user && !isPublic) {
     const redirect = request.nextUrl.clone();

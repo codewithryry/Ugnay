@@ -42,7 +42,7 @@ export default function MessageList({
 
   if (loading) {
     return (
-      <div className="flex-1 overflow-y-auto px-3 py-8 sm:px-4">
+      <div className="flex-1 overflow-y-auto px-4 py-8 sm:px-4">
         <div className="mx-auto w-full max-w-3xl space-y-6" aria-busy="true">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="space-y-2">
@@ -60,12 +60,12 @@ export default function MessageList({
     <div
       ref={scrollerRef}
       onScroll={onScroll}
-      className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-5 sm:px-4 sm:py-6"
+      className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-4 py-6 sm:px-4 sm:py-7"
       role="log"
       aria-live="polite"
       aria-relevant="additions text"
     >
-      <div className="mx-auto flex w-full min-w-0 max-w-3xl flex-col gap-5 sm:gap-6">
+      <div className="mx-auto flex w-full min-w-0 max-w-3xl flex-col gap-7 sm:gap-6">
         {messages
           .filter((m) => m.role !== "system")
           .map((message, index, all) =>

@@ -6,6 +6,11 @@ import ChatWindow from "./ChatWindow";
 import SearchOverlay from "./SearchOverlay";
 import SettingsPanel from "./SettingsPanel";
 import WorkspacePanel from "./WorkspacePanel";
+import FeedbackModal from "./FeedbackModal";
+import UsageModal from "./UsageModal";
+import ModelCompareModal from "./ModelCompareModal";
+import ArtifactPanel from "./ArtifactPanel";
+import ReleaseNotesView from "./ReleaseNotesView";
 import Sidebar from "./Sidebar";
 import { applyTheme } from "@/lib/theme";
 import { DEFAULT_CHAT_TITLE } from "@/lib/utils";
@@ -30,7 +35,7 @@ export default function ChatApp(props: {
   nickname: string | null;
   createdAt: string;
   /** Which surface fills the main area. Defaults to the chat window. */
-  view?: "chat" | "search";
+  view?: "chat" | "search" | "release-notes" | "feedback";
 }) {
   const init = useChatStore((s) => s.init);
   const hydrated = useChatStore((s) => s.hydrated);
@@ -38,6 +43,10 @@ export default function ChatApp(props: {
   const setSidebarOpen = useChatStore((s) => s.setSidebarOpen);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // /feedback opens the modal over the chat, the way /search opens its overlay.
+  const [feedbackOpen, setFeedbackOpen] = useState(props.view === "feedback");
+  const [usageOpen, setUsageOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
   const streaming = useChatStore((s) => s.streaming);
   const notifyOnFinish = useChatStore((s) => s.settings?.notify_on_finish ?? false);
   const wasStreaming = useRef(false);
@@ -49,6 +58,8 @@ export default function ChatApp(props: {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedChat = searchParams.get("chat");
+  /** Only the chat view owns the address bar and the tab title. */
+  const isChatView = !props.view || props.view === "chat" || props.view === "feedback";
 
   useEffect(() => {
     void init(props.userId);
@@ -67,20 +78,21 @@ export default function ChatApp(props: {
   // The route mirrors the open conversation, so a refresh reopens exactly it —
   // and stays on the empty new-chat state when no chat is open.
   useEffect(() => {
-    if (!hydrated || props.view === "search") return;
+    if (!hydrated || !isChatView) return;
     // A temporary chat has no row, so it is never named in the route.
     const routed = activeChatId === TEMPORARY_CHAT_ID ? null : activeChatId;
     if (routed === requestedChat) return;
     router.replace(routed ? `/?chat=${routed}` : "/", { scroll: false });
-  }, [hydrated, activeChatId, requestedChat, props.view, router]);
+  }, [hydrated, activeChatId, requestedChat, isChatView, router]);
 
   // The tab follows the open conversation, using its generated title. Set from
   // the client because the title is only known once the store has it.
   useEffect(() => {
+    if (!isChatView) return;
     const title = activeChatTitle?.trim();
     document.title =
       activeChatId && title && title !== DEFAULT_CHAT_TITLE ? `${title} | Ugnay` : "Ugnay";
-  }, [activeChatId, activeChatTitle]);
+  }, [activeChatId, activeChatTitle, isChatView]);
 
   useEffect(() => {
     applyTheme(theme);
@@ -101,18 +113,56 @@ export default function ChatApp(props: {
     new Notification("Ugnay", { body: "Your reply is ready." });
   }, [streaming, notifyOnFinish]);
 
-  // Escape closes the mobile sidebar; Cmd/Ctrl+K opens a fresh chat.
+  /**
+   * App shortcuts.
+   *
+   *   Cmd/Ctrl+K          search
+   *   Cmd/Ctrl+Shift+O    new chat
+   *   Cmd/Ctrl+Shift+P    model picker
+   *   Escape              close the open panel
+   *
+   * New chat is Shift+O rather than Cmd/Ctrl+N because browsers keep N for a
+   * new window and never deliver it to the page. Anything with a dialog open
+   * is left alone, so a modal's own Escape handling still wins.
+   */
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setSidebarOpen(false);
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      if (event.key === "Escape") {
+        // Innermost surface first, so one press closes one thing.
+        const state = useChatStore.getState();
+        if (state.artifact) state.closeArtifact();
+        else if (state.panelProjectId) state.setPanelProject(null);
+        else setSidebarOpen(false);
+        return;
+      }
+
+      const modifier = event.metaKey || event.ctrlKey;
+      if (!modifier || event.altKey || event.repeat) return;
+      // A dialog owns the keyboard while it is up.
+      if (document.querySelector('[role="dialog"]')) return;
+
+      const key = event.key.toLowerCase();
+
+      if (key === "k" && !event.shiftKey) {
+        event.preventDefault();
+        if (props.view !== "search") router.push("/search");
+        return;
+      }
+      if (key === "o" && event.shiftKey) {
         event.preventDefault();
         useChatStore.getState().newChat();
+        if (!isChatView) router.push("/");
+        return;
+      }
+      if (key === "p" && event.shiftKey) {
+        event.preventDefault();
+        useChatStore.getState().openModelPicker();
+        if (!isChatView) router.push("/");
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [setSidebarOpen]);
+  }, [setSidebarOpen, router, props.view, isChatView]);
 
   const user: CurrentUser = {
     userId: props.userId,
@@ -136,18 +186,39 @@ export default function ChatApp(props: {
       <Sidebar
         user={user}
         onOpenSettings={() => setSettingsOpen(true)}
-        activeNav={props.view ?? "chat"}
+        onOpenFeedback={() => setFeedbackOpen(true)}
+        onOpenUsage={() => setUsageOpen(true)}
+        onOpenCompare={() => setCompareOpen(true)}
+        activeNav={
+          // /feedback is the chat with a modal over it, so the chat row stays active.
+          !props.view || props.view === "feedback" ? "chat" : props.view
+        }
       />
 
-      <ChatWindow user={user} hydrated={hydrated} />
+      {props.view === "release-notes" ? (
+        <ReleaseNotesView />
+      ) : (
+        <>
+          <ChatWindow user={user} hydrated={hydrated} />
 
-      {/* Workspace settings and instructions, beside the conversation. */}
-      <WorkspacePanel />
+          {/* Workspace settings and instructions, beside the conversation. */}
+          <WorkspacePanel />
+
+          {/* The canvas, for a generated document opened out of a reply. */}
+          <ArtifactPanel />
+        </>
+      )}
 
       {/* /search keeps the chat behind it, like a command palette. */}
       {props.view === "search" && <SearchOverlay onClose={() => router.push("/")} />}
 
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} user={user} />
+
+      <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
+
+      <UsageModal open={usageOpen} onClose={() => setUsageOpen(false)} />
+
+      <ModelCompareModal open={compareOpen} onClose={() => setCompareOpen(false)} />
     </div>
   );
 }

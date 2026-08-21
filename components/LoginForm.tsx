@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -13,7 +12,8 @@ export default function LoginForm() {
   const params = useSearchParams();
   const next = params.get("next") ?? "/";
 
-  const [mode, setMode] = useState<Mode>("signin");
+  // ?mode=signup deep-links here from the signed-out landing prompt.
+  const [mode, setMode] = useState<Mode>(params.get("mode") === "signup" ? "signup" : "signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
@@ -81,16 +81,9 @@ export default function LoginForm() {
   return (
     <div className="w-full max-w-sm">
       <div className="mb-8 text-center sm:mb-10">
-        <Image
-          src="/logo/logo-256.png"
-          alt="Ugnay"
-          width={72}
-          height={72}
-          priority
-          className="mx-auto mb-4 h-16 w-16 rounded-2xl sm:h-[72px] sm:w-[72px]"
-        />
-        <h1 className="text-3xl font-semibold tracking-tight text-neutral-100 sm:text-4xl">Ugnay</h1>
-        <p className="mt-2 text-sm text-neutral-500">Your minimal AI chat workspace.</p>
+        <h1 className="text-3xl font-semibold tracking-tight text-neutral-100 sm:text-4xl">
+          {mode === "signup" ? "Create your account" : "Log into your account"}
+        </h1>
       </div>
 
       <button
@@ -178,6 +171,25 @@ export default function LoginForm() {
           {mode === "signin" ? "Create an account" : "Sign in"}
         </button>
       </p>
+
+      <div className="mt-6 text-center text-[11px] leading-relaxed text-neutral-600">
+        <p>
+          By continuing, you agree to Ugnay&rsquo;s <LegalTerm>Terms of Service</LegalTerm> and{" "}
+          <LegalTerm>Privacy Policy</LegalTerm>.
+        </p>
+        <p className="mt-0.5">
+          <LegalTerm>Your privacy choices</LegalTerm>
+        </p>
+      </div>
     </div>
   );
+}
+
+/**
+ * Terms / Privacy have no pages yet, so these read as emphasis rather than
+ * links — a dead link is worse than plain text. Swap the spans for <Link>
+ * once /terms and /privacy exist.
+ */
+function LegalTerm({ children }: { children: React.ReactNode }) {
+  return <span className="text-neutral-500 underline underline-offset-2">{children}</span>;
 }

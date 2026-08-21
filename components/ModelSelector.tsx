@@ -203,9 +203,7 @@ export default function ModelSelector() {
           >
             {available.length === 0 && (
               <p className="px-3 py-4 text-xs leading-relaxed text-neutral-500">
-                No provider is configured. Set{" "}
-                <code className="text-neutral-300">OPENROUTER_API_KEY</code> on the server and
-                restart.
+                No models are available right now. Please try again later.
               </p>
             )}
 

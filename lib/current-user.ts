@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { isMissingSession } from "@/lib/supabase/auth-errors";
 
 export interface CurrentUserRecord {
   userId: string;
@@ -16,13 +17,17 @@ export interface CurrentUserRecord {
  * can redirect.
  */
 export async function getCurrentUser(): Promise<CurrentUserRecord | null> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
 
-  if (userError) console.error("[ugnay] Could not read the current user:", userError);
+  // No session is the normal state on the signed-out landing page, so only a
+  // real failure is worth logging.
+  if (userError && !isMissingSession(userError)) {
+    console.error("[ugnay] Could not read the current user:", userError);
+  }
   if (!user) return null;
 
   let { data: profile, error: profileError } = await supabase

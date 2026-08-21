@@ -285,3 +285,180 @@ create policy "feedback: own rows" on public.message_feedback
 
 create policy "app feedback: own rows" on public.app_feedback
   for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- ======================================================================
+-- v0.6 — prompt library, branching, sharing, workspace settings, files
+-- Idempotent like everything above: safe to re-run on an existing project.
+-- ======================================================================
+
+-- ---------------------------------------------------------------- prompts
+-- Reusable prompts, inserted into the composer. `folder` is a plain label so
+-- organising them needs no second table.
+create table if not exists public.prompts (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  title      text not null check (char_length(title) between 1 and 120),
+  body       text not null check (char_length(body) between 1 and 8000),
+  folder     text not null default '' check (char_length(folder) <= 60),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists prompts_user_updated_idx on public.prompts (user_id, updated_at desc);
+
+drop trigger if exists prompts_touch on public.prompts;
+create trigger prompts_touch before update on public.prompts
+  for each row execute function public.touch_updated_at();
+
+-- ------------------------------------------------ branching & organisation
+-- A branch is an ordinary chat that remembers where it came from, so the
+-- original conversation is never modified.
+alter table public.chats
+  add column if not exists branched_from_chat_id uuid references public.chats(id) on delete set null;
+alter table public.chats
+  add column if not exists branched_from_message_id uuid references public.messages(id) on delete set null;
+-- Sidebar organisation.
+alter table public.chats add column if not exists pinned boolean not null default false;
+alter table public.chats add column if not exists archived boolean not null default false;
+create index if not exists chats_user_pinned_idx
+  on public.chats (user_id, pinned desc, updated_at desc);
+
+-- ------------------------------------------------------ workspace settings
+-- Per-workspace model default and memory switch. Null model columns mean
+-- "use the account default", so existing workspaces are unaffected.
+alter table public.projects add column if not exists default_provider text;
+alter table public.projects add column if not exists default_model text;
+alter table public.projects add column if not exists memory_enabled boolean not null default true;
+
+-- ------------------------------------------------------------ shared chats
+-- A read-only link to one conversation. `shared_up_to` freezes the snapshot so
+-- messages sent after sharing are not exposed by an already-published link.
+create table if not exists public.shared_chats (
+  id           uuid primary key default gen_random_uuid(),
+  slug         text not null unique check (char_length(slug) between 16 and 64),
+  chat_id      uuid not null references public.chats(id) on delete cascade,
+  user_id      uuid not null references auth.users(id) on delete cascade,
+  shared_up_to timestamptz not null default now(),
+  revoked      boolean not null default false,
+  created_at   timestamptz not null default now()
+);
+create index if not exists shared_chats_chat_idx on public.shared_chats (chat_id);
+create index if not exists shared_chats_user_idx on public.shared_chats (user_id, created_at desc);
+
+-- ------------------------------------------------------------------- files
+-- Reserved for File Chat / Workspace Files. Nothing writes here yet; the table
+-- and its policies exist so that release needs no second migration.
+create table if not exists public.files (
+  id             uuid primary key default gen_random_uuid(),
+  user_id        uuid not null references auth.users(id) on delete cascade,
+  project_id     uuid references public.projects(id) on delete cascade,
+  chat_id        uuid references public.chats(id) on delete cascade,
+  bucket         text not null default 'attachments',
+  storage_path   text not null,
+  name           text not null check (char_length(name) between 1 and 255),
+  mime_type      text not null,
+  size_bytes     bigint not null check (size_bytes >= 0),
+  /* Extracted text, used to answer questions about the file. */
+  extracted_text text,
+  created_at     timestamptz not null default now()
+);
+create index if not exists files_user_created_idx on public.files (user_id, created_at desc);
+create index if not exists files_project_idx on public.files (project_id);
+create index if not exists files_chat_idx on public.files (chat_id);
+
+-- --------------------------------------------------------------------- RLS
+alter table public.prompts      enable row level security;
+alter table public.shared_chats enable row level security;
+alter table public.files        enable row level security;
+
+drop policy if exists "prompts: own rows"      on public.prompts;
+drop policy if exists "shared chats: own rows" on public.shared_chats;
+drop policy if exists "files: own rows"        on public.files;
+
+create policy "prompts: own rows" on public.prompts
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Only the owner manages share links. Public reading goes through the
+-- security-definer function below, never through this table.
+create policy "shared chats: own rows" on public.shared_chats
+  for all to authenticated
+  using (
+    auth.uid() = user_id
+    and exists (select 1 from public.chats c where c.id = shared_chats.chat_id and c.user_id = auth.uid())
+  )
+  with check (
+    auth.uid() = user_id
+    and exists (select 1 from public.chats c where c.id = shared_chats.chat_id and c.user_id = auth.uid())
+  );
+
+create policy "files: own rows" on public.files
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- -------------------------------------------------- public read of a share
+-- Returns one shared conversation to anyone holding the slug. Security
+-- definer, because an anonymous reader has no rights on chats or messages.
+--
+-- Deliberately narrow: title, role, content and timestamp only. The chat's
+-- system prompt, its workspace and instructions, the owner's id, the provider,
+-- the model and the token counts are all withheld.
+create or replace function public.get_shared_chat(share_slug text)
+returns table (chat_title text, role text, content text, created_at timestamptz)
+language sql stable security definer set search_path = public as $$
+  select c.title, m.role, m.content, m.created_at
+  from public.shared_chats s
+  join public.chats c on c.id = s.chat_id
+  join public.messages m on m.chat_id = s.chat_id
+  where s.slug = share_slug
+    and s.revoked = false
+    and m.created_at <= s.shared_up_to
+    and m.role in ('user', 'assistant')
+  order by m.created_at asc
+  limit 2000;
+$$;
+
+-- --------------------------------------------------------------- usage
+-- Aggregates for the usage dashboard. Security invoker plus an explicit
+-- auth.uid() filter, exactly like match_user_messages, so a caller can only
+-- ever total their own messages. Token columns are whatever the provider
+-- reported; nothing is estimated here.
+create or replace function public.usage_summary(since timestamptz default null)
+returns table (
+  provider          text,
+  model             text,
+  role              text,
+  messages          bigint,
+  prompt_tokens     bigint,
+  completion_tokens bigint,
+  total_tokens      bigint
+)
+language sql stable security invoker set search_path = public as $$
+  select
+    m.provider,
+    m.model,
+    m.role,
+    count(*)::bigint,
+    coalesce(sum(m.prompt_tokens), 0)::bigint,
+    coalesce(sum(m.completion_tokens), 0)::bigint,
+    coalesce(sum(m.total_tokens), 0)::bigint
+  from public.messages m
+  where m.user_id = auth.uid()
+    and (since is null or m.created_at >= since)
+  group by m.provider, m.model, m.role;
+$$;
+
+-- Messages per day, for the activity strip.
+create or replace function public.usage_daily(since timestamptz default null)
+returns table (day date, messages bigint, total_tokens bigint)
+language sql stable security invoker set search_path = public as $$
+  select
+    (m.created_at at time zone 'utc')::date as day,
+    count(*)::bigint,
+    coalesce(sum(m.total_tokens), 0)::bigint
+  from public.messages m
+  where m.user_id = auth.uid()
+    and (since is null or m.created_at >= since)
+  group by 1
+  order by 1 asc;
+$$;
+
+revoke all on function public.get_shared_chat(text) from public;
+grant execute on function public.get_shared_chat(text) to anon, authenticated;

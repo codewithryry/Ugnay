@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
  * the wire — API keys stay on the server.
  */
 export async function GET() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

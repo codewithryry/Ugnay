@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { AlertTriangle, EyeOff, PanelLeft, WifiOff, X } from "lucide-react";
 import type { CurrentUser } from "./ChatApp";
@@ -11,6 +10,7 @@ import MessageList from "./MessageList";
 import { cn } from "@/lib/utils";
 import { GREETING_STORAGE_KEY, pickGreeting, type Greeting } from "@/lib/greetings";
 import { useChatStore } from "@/store/chatStore";
+import { useIsCompact } from "./useIsCompact";
 
 export default function ChatWindow({
   user,
@@ -28,6 +28,7 @@ export default function ChatWindow({
   const openModelPicker = useChatStore((s) => s.openModelPicker);
   const setError = useChatStore((s) => s.setError);
   const setSidebarOpen = useChatStore((s) => s.setSidebarOpen);
+  const compact = useIsCompact();
 
   const [offline, setOffline] = useState(false);
   const [shared, setShared] = useState(false);
@@ -73,19 +74,6 @@ export default function ChatWindow({
         >
           <PanelLeft className="h-4 w-4" aria-hidden />
         </button>
-
-        <span className="flex min-w-0 items-center gap-1.5 px-1 md:hidden">
-          <Image
-            src="/logo/logo-192.png"
-            alt=""
-            width={22}
-            height={22}
-            className="h-[22px] w-[22px] shrink-0 rounded-md"
-          />
-          <span className="truncate font-display text-sm font-semibold tracking-tight text-neutral-100">
-            Ugnay
-          </span>
-        </span>
 
         <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1 md:gap-1.5">
           <Link
@@ -154,15 +142,31 @@ export default function ChatWindow({
       )}
 
       {isEmpty && !loadingMessages ? (
-        // Empty state: greeting and composer centred together as one block.
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
-          <EmptyState
-            hydrated={hydrated}
-            name={user.nickname?.trim() || user.displayName}
-            chatKey={activeChatId}
-          />
-          <Composer centered />
-        </div>
+        compact ? (
+          // PWA: the greeting sits alone in the middle of the screen and the
+          // composer stays docked at the bottom, as it is once a chat starts.
+          <>
+            <div className="flex min-h-0 flex-1 items-center justify-center">
+              <EmptyState
+                hydrated={hydrated}
+                name={user.nickname?.trim() || user.displayName}
+                chatKey={activeChatId}
+                compact
+              />
+            </div>
+            <Composer centered={false} />
+          </>
+        ) : (
+          // Desktop: greeting and composer centred together as one block.
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
+            <EmptyState
+              hydrated={hydrated}
+              name={user.nickname?.trim() || user.displayName}
+              chatKey={activeChatId}
+            />
+            <Composer centered />
+          </div>
+        )
       ) : (
         <>
           <MessageList
@@ -233,10 +237,13 @@ function EmptyState({
   hydrated,
   name,
   chatKey,
+  compact = false,
 }: {
   hydrated: boolean;
   name: string;
   chatKey: string | null;
+  /** PWA variant: one quiet centred line instead of the desktop hero. */
+  compact?: boolean;
 }) {
   // Both the clock and the random pick are resolved after mount so the server
   // render (different timezone, different roll) cannot mismatch on hydration.
@@ -265,11 +272,18 @@ function EmptyState({
   }, [chatKey, who]);
 
   return (
-    <div className="flex w-full flex-col items-center px-4 pb-1">
-      <div className="min-h-[4.5rem] text-center sm:min-h-[5.5rem]">
+    <div className={cn("flex w-full flex-col items-center px-4", !compact && "pb-1")}>
+      <div className={cn("text-center", !compact && "min-h-[4.5rem] sm:min-h-[5.5rem]")}>
         {hydrated && greeting && (
           <div className="animate-fade-in">
-            <h1 className="text-[1.65rem] font-semibold tracking-tight text-neutral-100 xs:text-3xl sm:text-[2.6rem]">
+            <h1
+              className={cn(
+                "tracking-tight text-neutral-100",
+                compact
+                  ? "text-lg font-normal"
+                  : "text-[1.65rem] font-semibold xs:text-3xl sm:text-[2.6rem]",
+              )}
+            >
               {greeting.headline}
             </h1>
           </div>

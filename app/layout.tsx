@@ -96,6 +96,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
+      // The theme is stored per browser (localStorage, mirrored from the user's
+      // settings row), so the server cannot know it at render time. Rendering
+      // the same default resolveTheme() falls back to on the server means the
+      // markup already agrees for everyone on the default theme.
+      data-theme="dark"
+      // Only an explicit light choice still differs, and the inline script
+      // below rewrites the attribute before first paint to avoid a flash. That
+      // makes this element's attributes deliberately client-owned, which is
+      // what suppressHydrationWarning is for. It applies to <html> alone, one
+      // level deep, so mismatches in <body> or any child are still reported.
+      suppressHydrationWarning
       className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable}`}
     >
       <head>

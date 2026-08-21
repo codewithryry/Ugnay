@@ -1,15 +1,13 @@
-import HelpPageShell from "@/components/HelpPageShell";
-import ReleaseNotesList from "@/components/ReleaseNotesList";
+import { redirect } from "next/navigation";
+import ChatApp from "@/components/ChatApp";
+import { getCurrentUser } from "@/lib/current-user";
 
+export const dynamic = "force-dynamic";
 export const metadata = { title: "Release notes" };
 
-export default function ReleaseNotesPage() {
-  return (
-    <HelpPageShell
-      title="Release notes"
-      description="What changed in Ugnay, newest first."
-    >
-      <ReleaseNotesList />
-    </HelpPageShell>
-  );
+export default async function ReleaseNotesPage() {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+
+  return <ChatApp {...user} view="release-notes" />;
 }

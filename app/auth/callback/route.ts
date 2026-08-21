@@ -3,16 +3,45 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+/** Host of a configured URL, or null when it is unset or unparseable. */
+function hostOf(value: string | null | undefined) {
+  if (!value) return null;
+  try {
+    return new URL(value.includes("://") ? value : `https://${value}`).host;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * The public origin of this request. Behind Vercel's proxy `nextUrl.origin` is
- * the internal one, which would send the signed-in user to the wrong host, so
- * the forwarded headers win when they are present.
+ * The public origin of this request.
+ *
+ * Behind a proxy `nextUrl.origin` is the internal one, which would send the
+ * signed-in user to the wrong host — but `x-forwarded-host` is caller-supplied,
+ * so trusting it outright lets a crafted request bounce the visitor to another
+ * site. The configured site URL wins; the forwarded host is only honoured when
+ * it is one of the deployment's own known hosts.
  */
 function publicOrigin(request: NextRequest) {
-  const host = request.headers.get("x-forwarded-host");
-  if (!host) return request.nextUrl.origin;
-  const proto = request.headers.get("x-forwarded-proto") ?? "https";
-  return `${proto}://${host}`;
+  const configured = process.env.NEXT_PUBLIC_SITE_URL;
+  if (configured && hostOf(configured)) return new URL(configured).origin;
+
+  const forwarded = request.headers.get("x-forwarded-host");
+  const allowed = new Set(
+    [
+      request.nextUrl.host,
+      hostOf(process.env.VERCEL_PROJECT_PRODUCTION_URL),
+      hostOf(process.env.VERCEL_URL),
+      ...(process.env.SITE_ALLOWED_HOSTS ?? "").split(",").map((h) => hostOf(h.trim())),
+    ].filter(Boolean),
+  );
+
+  if (forwarded && allowed.has(forwarded)) {
+    const proto = request.headers.get("x-forwarded-proto") === "http" ? "http" : "https";
+    return `${proto}://${forwarded}`;
+  }
+
+  return request.nextUrl.origin;
 }
 
 /** Keeps `next` a path on this site, so the callback cannot bounce elsewhere. */
@@ -33,7 +62,7 @@ export async function GET(request: NextRequest) {
   const origin = publicOrigin(request);
 
   if (code) {
-    const supabase = createClient();
+    const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) return NextResponse.redirect(`${origin}${next}`);
     console.error("[ugnay] Could not exchange the auth code for a session:", error);

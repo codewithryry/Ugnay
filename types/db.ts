@@ -20,6 +20,12 @@ export interface Chat {
   system_prompt: string | null; // per-chat override
   /** Workspace this chat belongs to; null for a plain conversation. */
   project_id: string | null;
+  /** Set when this conversation was branched out of another one. */
+  branched_from_chat_id: string | null;
+  branched_from_message_id: string | null;
+  /** Sidebar organisation: pinned rows sort first, archived ones are hidden. */
+  pinned: boolean;
+  archived: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -31,8 +37,46 @@ export interface Project {
   name: string;
   /** Applied to every conversation in this workspace. */
   instructions: string;
+  /** Model this workspace prefers; null means the account default. */
+  default_provider: string | null;
+  default_model: string | null;
+  /** Whether conversation memory applies inside this workspace. */
+  memory_enabled: boolean;
   created_at: string;
   updated_at: string;
+}
+
+/** A reusable prompt from the library. */
+export interface Prompt {
+  id: string;
+  user_id: string;
+  title: string;
+  body: string;
+  /** Plain label used to group the library; "" means ungrouped. */
+  folder: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A read-only public link to one conversation. */
+export interface SharedChat {
+  id: string;
+  slug: string;
+  chat_id: string;
+  user_id: string;
+  /** Messages after this instant are not exposed by the link. */
+  shared_up_to: string;
+  revoked: boolean;
+  created_at: string;
+}
+
+/** One remembered excerpt behind Settings → Data Controls → personalisation. */
+export interface MemoryEntry {
+  message_id: string;
+  chat_id: string;
+  chat_title: string;
+  content: string;
+  created_at: string;
 }
 
 export interface Message {

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Check,
   Copy,
+  GitBranch,
   Link as LinkIcon,
   MoreHorizontal,
   RefreshCw,
@@ -14,7 +15,7 @@ import {
   Volume2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useChatStore } from "@/store/chatStore";
+import { TEMPORARY_CHAT_ID, useChatStore } from "@/store/chatStore";
 
 type Feedback = "up" | "down" | null;
 
@@ -47,6 +48,12 @@ export default function MessageActions({
   const [linked, setLinked] = useState(false);
   const feedback = useChatStore((s) => s.feedbackByMessage[messageId] ?? null) as Feedback;
   const rateMessage = useChatStore((s) => s.rateMessage);
+  const branchFromMessage = useChatStore((s) => s.branchFromMessage);
+  // A temporary chat has no stored turns to copy into a branch.
+  const canBranch = useChatStore(
+    (s) => s.activeChatId !== null && s.activeChatId !== TEMPORARY_CHAT_ID,
+  ) && !messageId.startsWith("local-");
+  const [branching, setBranching] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -194,6 +201,27 @@ export default function MessageActions({
       >
         <ThumbsDown className="h-4 w-4" aria-hidden />
       </button>
+
+      {canBranch && (
+        <button
+          type="button"
+          onClick={async () => {
+            setBranching(true);
+            await branchFromMessage(messageId);
+            setBranching(false);
+          }}
+          disabled={branching}
+          title="Branch a new conversation from here"
+          aria-label="Branch a new conversation from here"
+          className={buttonClass}
+        >
+          {branching ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          ) : (
+            <GitBranch className="h-4 w-4" aria-hidden />
+          )}
+        </button>
+      )}
 
       {onRegenerate && (
         <button

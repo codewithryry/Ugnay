@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Link as LinkIcon, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Check, Link as LinkIcon, MoreHorizontal, Pencil, Share2, Trash2 } from "lucide-react";
+import ShareModal from "./ShareModal";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/store/chatStore";
 
@@ -19,6 +20,7 @@ export default function ChatHeaderMenu({ chatId, title }: { chatId: string; titl
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [draft, setDraft] = useState(title);
   const [copied, setCopied] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -116,6 +118,19 @@ export default function ChatHeaderMenu({ chatId, title }: { chatId: string; titl
             aria-label="Chat options"
             className="absolute right-0 top-[calc(100%+0.35rem)] z-40 w-[min(13rem,calc(100vw-1.5rem))] rounded-xl border border-ink-700 bg-ink-850 p-1 shadow-2xl animate-fade-in"
           >
+            <button
+              role="menuitem"
+              type="button"
+              onClick={() => {
+                close();
+                setShareOpen(true);
+              }}
+              className={itemClass}
+            >
+              <Share2 className="h-4 w-4 text-neutral-500" aria-hidden />
+              Share…
+            </button>
+
             <button role="menuitem" type="button" onClick={() => void copyLink()} className={itemClass}>
               <LinkIcon className="h-4 w-4 text-neutral-500" aria-hidden />
               {copied ? "Link copied" : "Copy link"}
@@ -163,6 +178,13 @@ export default function ChatHeaderMenu({ chatId, title }: { chatId: string; titl
           </div>
         </>
       )}
+
+      <ShareModal
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        chatId={chatId}
+        chatTitle={title}
+      />
     </div>
   );
 }

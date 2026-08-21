@@ -16,6 +16,7 @@ import {
   withSystemPrompt,
 } from "@/lib/prompt";
 import { embedText, toVectorLiteral } from "@/lib/providers/embeddings";
+import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 import {
   DEFAULT_CHAT_TITLE,
@@ -40,6 +41,19 @@ const AUTO_EXCLUDED_PROVIDERS = new Set(["puter"]);
 const PUTER_MONTHLY_LIMIT = Number(process.env.PUTER_MONTHLY_LIMIT) || 50;
 /** Budget for the one-off title pass: a handful of words, so this is plenty. */
 const TITLE_MAX_TOKENS = 24;
+
+/** Replies allowed per account per minute, across every provider. */
+const RATE_LIMIT = 20;
+const RATE_WINDOW_MS = 60_000;
+
+/**
+ * Input ceilings. Everything below is checked before a provider is called or a
+ * row is written, so an oversized payload costs nothing.
+ */
+const MAX_CONTENT_CHARS = 24_000;
+/** Turns a temporary chat may replay. Generous next to HISTORY_LIMIT. */
+const MAX_TEMPORARY_MESSAGES = 200;
+const MAX_TEMPORARY_TOTAL_CHARS = 200_000;
 
 /**
  * Summarises a chat's first exchange into a short title, using the same
@@ -119,7 +133,7 @@ const MEMORY_MATCH_LIMIT = 5;
  *  - holding the provider API keys
  */
 export async function POST(request: NextRequest) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
     error: userError,
@@ -135,6 +149,10 @@ export async function POST(request: NextRequest) {
       { status: 401 },
     );
   }
+
+  // Keyed by account, so one caller cannot spend another's budget.
+  const limit = rateLimit(`chat:${user.id}`, RATE_LIMIT, RATE_WINDOW_MS);
+  if (!limit.allowed) return tooManyRequests(limit.retryAfter);
 
   let body: {
     chatId?: string;
@@ -163,6 +181,37 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "chatId is required." }, { status: 400 });
   }
   if (!content) return NextResponse.json({ error: "Message content is required." }, { status: 400 });
+  if (content.length > MAX_CONTENT_CHARS) {
+    return NextResponse.json(
+      { error: `Your message is too long. Keep it under ${MAX_CONTENT_CHARS} characters.` },
+      { status: 400 },
+    );
+  }
+
+  // A temporary chat replays its own history, so that array is caller-supplied
+  // and has to be bounded as well.
+  if (temporary && body.messages) {
+    if (!Array.isArray(body.messages)) {
+      return NextResponse.json({ error: "messages must be an array." }, { status: 400 });
+    }
+    if (body.messages.length > MAX_TEMPORARY_MESSAGES) {
+      return NextResponse.json({ error: "This conversation is too long." }, { status: 400 });
+    }
+    let total = 0;
+    for (const message of body.messages) {
+      const length = typeof message?.content === "string" ? message.content.length : 0;
+      if (length > MAX_CONTENT_CHARS) {
+        return NextResponse.json(
+          { error: "One of the earlier messages is too long." },
+          { status: 400 },
+        );
+      }
+      total += length;
+    }
+    if (total > MAX_TEMPORARY_TOTAL_CHARS) {
+      return NextResponse.json({ error: "This conversation is too long." }, { status: 400 });
+    }
+  }
 
   // RLS already scopes this, but the explicit filter keeps the intent obvious.
   // A temporary chat has no row, so there is nothing to load or own.
@@ -176,6 +225,8 @@ export async function POST(request: NextRequest) {
   } | null = null;
   /** Instructions from the workspace this chat belongs to, if any. */
   let projectInstructions: string | null = null;
+  /** A workspace may switch conversation memory off for its own chats. */
+  let projectMemoryEnabled = true;
 
   if (!temporary) {
     const { data, error: chatError } = await supabase
@@ -195,13 +246,14 @@ export async function POST(request: NextRequest) {
     if (chat.project_id) {
       const { data: project, error: projectError } = await supabase
         .from("projects")
-        .select("instructions")
+        .select("instructions, memory_enabled")
         .eq("id", chat.project_id)
         .maybeSingle();
       if (projectError) {
         console.error("[ugnay] /api/chat could not load the workspace:", projectError);
       } else {
         projectInstructions = project?.instructions?.trim() || null;
+        projectMemoryEnabled = project?.memory_enabled ?? true;
       }
     }
   }
@@ -293,7 +345,10 @@ export async function POST(request: NextRequest) {
   // Optional cross-chat memory. Scoped to this user's own rows (and RLS), and
   // skipped entirely unless they enabled it in Settings → Data Controls.
   let historyContext: string | null = null;
-  if (!temporary && settings?.personalize_with_history) {
+  // Both switches must be on: the account setting and, inside a workspace,
+  // that workspace's own.
+  const memoryEnabled = Boolean(settings?.personalize_with_history) && projectMemoryEnabled;
+  if (!temporary && memoryEnabled) {
     // Semantic recall over this user's own earlier messages. RLS plus the
     // function's auth.uid() filter keep it to their rows.
     const queryVector = await embedText(content, "search_query");
@@ -321,7 +376,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Fallback recall: the most recent conversations, by title and opening line.
-  if (!temporary && !historyContext && settings?.personalize_with_history) {
+  if (!temporary && !historyContext && memoryEnabled) {
     const { data: recentChats, error: recentError } = await supabase
       .from("chats")
       .select("id, title, updated_at")
@@ -501,7 +556,7 @@ export async function POST(request: NextRequest) {
 
         // Index the user's turn for future recall. Best-effort: a failure here
         // must not affect the reply that was just delivered.
-        if (settings?.personalize_with_history && savedUserId) {
+        if (memoryEnabled && savedUserId) {
           const vector = await embedText(content, "search_document");
           if (vector) {
             const { error: embedError } = await supabase.from("message_embeddings").upsert(

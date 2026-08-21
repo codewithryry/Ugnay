@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  * so another user's chats can never appear here.
  */
 export async function GET() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
     error: userError,

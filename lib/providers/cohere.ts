@@ -58,7 +58,10 @@ export const cohereProvider: ChatProvider = {
   listModels: () => MODELS,
   streamChat(req: ChatRequest) {
     const apiKey = process.env.COHERE_API_KEY;
-    if (!apiKey) throw new ProviderError("COHERE_API_KEY is not set on the server.", 500, "cohere");
+    if (!apiKey) {
+      console.error("[ugnay] cohere is not configured: COHERE_API_KEY is not set.");
+      throw new ProviderError("This model is unavailable right now.", 500, "cohere");
+    }
     return streamOpenAICompatible({
       providerId: "cohere",
       baseUrl: "https://api.cohere.com/compatibility/v1",

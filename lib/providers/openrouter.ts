@@ -61,11 +61,8 @@ export const openrouterProvider: ChatProvider = {
   streamChat(req: ChatRequest) {
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
-      throw new ProviderError(
-        "OPENROUTER_API_KEY is not set on the server.",
-        500,
-        "openrouter",
-      );
+      console.error("[ugnay] openrouter is not configured: OPENROUTER_API_KEY is not set.");
+      throw new ProviderError("This model is unavailable right now.", 500, "openrouter");
     }
 
     return streamOpenAICompatible({

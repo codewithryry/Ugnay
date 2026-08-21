@@ -21,7 +21,11 @@ export const DEFAULT_MODEL = "openrouter/free";
 
 export function getProvider(id: string): ChatProvider {
   const provider = REGISTRY.find((p) => p.id === id);
-  if (!provider) throw new ProviderError(`Unknown provider "${id}".`, 400);
+  if (!provider) {
+    // The requested id is echoed to the log only, never back to the caller.
+    console.error(`[ugnay] Unknown provider requested: "${id}".`);
+    throw new ProviderError("That model is not available.", 400);
+  }
   return provider;
 }
 
@@ -51,10 +55,12 @@ export function resolveModel(providerId: string, modelId: string) {
   if (!provider || !provider.isConfigured()) {
     const fallback = getProvider(DEFAULT_PROVIDER);
     if (!fallback.isConfigured()) {
-      throw new ProviderError(
-        "No AI provider is configured. Set OPENROUTER_API_KEY on the server.",
-        503,
+      // Which key is missing is a server concern; the caller only learns that
+      // no model can answer right now.
+      console.error(
+        `[ugnay] No AI provider is configured: ${DEFAULT_PROVIDER} has no API key set.`,
       );
+      throw new ProviderError("No AI model is available right now. Please try again later.", 503);
     }
     return { provider: fallback, model: DEFAULT_MODEL };
   }

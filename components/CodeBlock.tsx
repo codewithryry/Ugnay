@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Maximize2 } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { useChatStore } from "@/store/chatStore";
+import { isArtifact } from "@/lib/artifacts";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 export default function CodeBlock({
@@ -15,6 +16,8 @@ export default function CodeBlock({
 }) {
   const [copied, setCopied] = useState(false);
   const wrapLines = useChatStore((s) => s.settings?.wrap_code_lines ?? false);
+  const openArtifact = useChatStore((s) => s.openArtifact);
+  const canOpenInCanvas = isArtifact(language, code);
 
   async function copy() {
     try {
@@ -32,6 +35,19 @@ export default function CodeBlock({
         <span className="font-mono text-[11px] uppercase tracking-wide text-neutral-500">
           {language || "text"}
         </span>
+        <div className="flex items-center gap-1">
+        {canOpenInCanvas && (
+          <button
+            type="button"
+            onClick={() => openArtifact(language || "text", code)}
+            aria-label="Open in canvas"
+            title="Open in canvas"
+            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-neutral-400 transition hover:bg-ink-800 hover:text-neutral-100"
+          >
+            <Maximize2 className="h-3 w-3" aria-hidden />
+            Canvas
+          </button>
+        )}
         <button
           type="button"
           onClick={copy}
@@ -45,6 +61,7 @@ export default function CodeBlock({
           )}
           {copied ? "Copied" : "Copy"}
         </button>
+        </div>
       </div>
 
       <SyntaxHighlighter

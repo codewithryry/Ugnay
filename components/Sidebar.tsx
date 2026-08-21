@@ -16,6 +16,9 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Archive,
+  ArchiveRestore,
+  Pin,
   Search,
   SlidersHorizontal,
   SquarePen,
@@ -49,12 +52,18 @@ const menuItemDisabledClass =
 export default function Sidebar({
   user,
   onOpenSettings,
+  onOpenFeedback,
+  onOpenUsage,
+  onOpenCompare,
   activeNav = "chat",
 }: {
   user: CurrentUser;
   onOpenSettings: () => void;
+  onOpenFeedback: () => void;
+  onOpenUsage: () => void;
+  onOpenCompare: () => void;
   /** Highlights the row for the surface currently shown. */
-  activeNav?: "chat" | "search";
+  activeNav?: "chat" | "search" | "release-notes";
 }) {
   const router = useRouter();
   const chats = useChatStore((s) => s.chats);
@@ -77,14 +86,38 @@ export default function Sidebar({
   const [namingWorkspace, setNamingWorkspace] = useState(false);
 
   // Conversations inside a workspace are listed under it, not in History.
+  const [historyQuery, setHistoryQuery] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
+
+  /** Plain conversations, minus archived ones unless they are being shown. */
+  const visibleChats = useMemo(() => {
+    const q = historyQuery.trim().toLowerCase();
+    return chats.filter(
+      (c) =>
+        !c.project_id &&
+        (showArchived ? c.archived : !c.archived) &&
+        (!q || c.title.toLowerCase().includes(q)),
+    );
+  }, [chats, historyQuery, showArchived]);
+
+  const pinnedChats = useMemo(
+    () => visibleChats.filter((c) => c.pinned),
+    [visibleChats],
+  );
   const groups = useMemo(
-    () => groupByDate(chats.filter((c) => !c.project_id), (c) => c.updated_at),
+    () => groupByDate(visibleChats.filter((c) => !c.pinned), (c) => c.updated_at),
+    [visibleChats],
+  );
+  const archivedCount = useMemo(
+    () => chats.filter((c) => !c.project_id && c.archived).length,
     [chats],
   );
 
   async function signOut() {
     await createClient().auth.signOut();
-    router.replace("/login");
+    // "/" is the public New Chat now, so there is no reason to force the
+    // sign-in page on someone who just left.
+    router.replace("/");
     router.refresh();
   }
 
@@ -267,6 +300,23 @@ export default function Sidebar({
 
         {historyOpen && (
           <nav aria-label="Chat history" className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2">
+            {hydrated && (chats.some((c) => !c.project_id) || historyQuery) && (
+              <div className="relative px-1 pb-2 pt-1">
+                <Search
+                  className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-600"
+                  aria-hidden
+                />
+                <input
+                  type="search"
+                  value={historyQuery}
+                  onChange={(e) => setHistoryQuery(e.target.value)}
+                  placeholder="Filter conversations"
+                  aria-label="Filter conversations"
+                  className="w-full rounded-lg border border-ink-800 bg-ink-950 py-1.5 pl-8 pr-2 text-sm text-neutral-200 placeholder:text-neutral-600 focus:border-ink-700 focus:outline-none"
+                />
+              </div>
+            )}
+
             {!hydrated && (
               <ul className="space-y-1.5 px-1 pt-1" aria-hidden>
                 {Array.from({ length: 6 }).map((_, i) => (
@@ -275,10 +325,38 @@ export default function Sidebar({
               </ul>
             )}
 
-            {hydrated && groups.length === 0 && (
+            {hydrated && groups.length === 0 && pinnedChats.length === 0 && (
               <p className="px-2.5 pt-3 text-xs leading-relaxed text-neutral-600">
-                No conversations yet. Start one and it will show up here.
+                {historyQuery.trim()
+                  ? "No conversations match that filter."
+                  : showArchived
+                    ? "Nothing archived."
+                    : "No conversations yet. Start one and it will show up here."}
               </p>
+            )}
+
+            {pinnedChats.length > 0 && (
+              <div className="mt-3 first:mt-0">
+                <h2 className="px-2.5 pb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-600">
+                  Pinned
+                </h2>
+                <ul className="space-y-0.5">
+                  {pinnedChats.map((chat) => (
+                    <ChatRow
+                      key={chat.id}
+                      id={chat.id}
+                      title={chat.title}
+                      pinned={chat.pinned}
+                      archived={chat.archived}
+                      active={activeNav === "chat" && chat.id === activeChatId}
+                      onSelect={() => {
+                        void setActiveChat(chat.id);
+                        if (activeNav !== "chat") router.push("/");
+                      }}
+                    />
+                  ))}
+                </ul>
+              </div>
             )}
 
             {groups.map((group) => (
@@ -292,6 +370,8 @@ export default function Sidebar({
                       key={chat.id}
                       id={chat.id}
                       title={chat.title}
+                      pinned={chat.pinned}
+                      archived={chat.archived}
                       active={activeNav === "chat" && chat.id === activeChatId}
                       onSelect={() => {
                         void setActiveChat(chat.id);
@@ -302,6 +382,16 @@ export default function Sidebar({
                 </ul>
               </div>
             ))}
+
+            {archivedCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowArchived((v) => !v)}
+                className="mt-3 w-full rounded-lg px-2.5 py-1.5 text-left text-[11px] text-neutral-600 transition hover:bg-ink-850 hover:text-neutral-400"
+              >
+                {showArchived ? "← Back to conversations" : `Archived (${archivedCount})`}
+              </button>
+            )}
           </nav>
         )}
       </div>
@@ -321,6 +411,9 @@ export default function Sidebar({
         <AccountMenu
           user={user}
           onOpenSettings={onOpenSettings}
+          onOpenFeedback={onOpenFeedback}
+          onOpenUsage={onOpenUsage}
+          onOpenCompare={onOpenCompare}
           onSignOut={signOut}
           compact={collapsed}
         />
@@ -676,15 +769,21 @@ function ChatRow({
   id,
   title,
   active,
+  pinned = false,
+  archived = false,
   onSelect,
 }: {
   id: string;
   title: string;
   active: boolean;
+  pinned?: boolean;
+  archived?: boolean;
   onSelect: () => void;
 }) {
   const renameChat = useChatStore((s) => s.renameChat);
   const deleteChat = useChatStore((s) => s.deleteChat);
+  const setChatPinned = useChatStore((s) => s.setChatPinned);
+  const setChatArchived = useChatStore((s) => s.setChatArchived);
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(title);
@@ -749,7 +848,7 @@ function ChatRow({
           active ? "bg-ink-800 text-neutral-100" : "text-neutral-400 hover:bg-ink-850 hover:text-neutral-200",
         )}
       >
-        <span className="truncate pr-16">{title}</span>
+        <span className="truncate pr-24">{title}</span>
       </button>
 
       <div
@@ -783,8 +882,32 @@ function ChatRow({
           <>
             <button
               type="button"
+              onClick={() => void setChatPinned(id, !pinned)}
+              aria-pressed={pinned}
+              className={cn(
+                "rounded p-1.5 hover:bg-ink-700",
+                pinned ? "text-neutral-200" : "text-neutral-500 hover:text-neutral-200",
+              )}
+              aria-label={pinned ? `Unpin ${title}` : `Pin ${title}`}
+            >
+              <Pin className={cn("h-3.5 w-3.5", pinned && "fill-current")} aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={() => void setChatArchived(id, !archived)}
+              className="rounded p-1.5 text-neutral-500 hover:bg-ink-700 hover:text-neutral-200"
+              aria-label={archived ? `Unarchive ${title}` : `Archive ${title}`}
+            >
+              {archived ? (
+                <ArchiveRestore className="h-3.5 w-3.5" aria-hidden />
+              ) : (
+                <Archive className="h-3.5 w-3.5" aria-hidden />
+              )}
+            </button>
+            <button
+              type="button"
               onClick={() => setEditing(true)}
-              className="rounded p-2 text-neutral-500 hover:bg-ink-700 hover:text-neutral-200"
+              className="rounded p-1.5 text-neutral-500 hover:bg-ink-700 hover:text-neutral-200"
               aria-label={`Rename ${title}`}
             >
               <Pencil className="h-3.5 w-3.5" aria-hidden />
@@ -792,7 +915,7 @@ function ChatRow({
             <button
               type="button"
               onClick={() => setConfirmDelete(true)}
-              className="rounded p-2 text-neutral-500 hover:bg-ink-700 hover:text-red-400"
+              className="rounded p-1.5 text-neutral-500 hover:bg-ink-700 hover:text-red-400"
               aria-label={`Delete ${title}`}
             >
               <Trash2 className="h-3.5 w-3.5" aria-hidden />

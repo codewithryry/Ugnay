@@ -11,6 +11,22 @@ const UNRECOVERABLE_CODES = new Set([
   "bad_jwt",
 ]);
 
+/**
+ * "Auth session missing!" — simply nobody is signed in.
+ *
+ * `getUser()` reports this as an error, but on a page that serves signed-out
+ * visitors (the landing New Chat) it is the ordinary state, not a fault, so it
+ * must not be logged as one.
+ */
+export function isMissingSession(
+  error: { name?: string; code?: string; message?: string } | null | undefined,
+) {
+  if (!error) return false;
+  if (error.name === "AuthSessionMissingError") return true;
+  if (error.code === "session_missing") return true;
+  return (error.message?.toLowerCase() ?? "").includes("auth session missing");
+}
+
 export function isUnrecoverableAuthError(
   error: { code?: string; message?: string; status?: number } | null | undefined,
 ) {

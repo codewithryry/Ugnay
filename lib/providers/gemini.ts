@@ -11,7 +11,10 @@ const MODELS: ModelInfo[] = [
 
 async function* stream(req: ChatRequest): AsyncIterable<StreamEvent> {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new ProviderError("GEMINI_API_KEY is not set on the server.", 500, "gemini");
+  if (!apiKey) {
+    console.error("[ugnay] gemini is not configured: GEMINI_API_KEY is not set.");
+    throw new ProviderError("This model is unavailable right now.", 500, "gemini");
+  }
 
   const systemParts = req.messages.filter((m) => m.role === "system").map((m) => ({ text: m.content }));
   const contents = req.messages
@@ -34,7 +37,15 @@ async function* stream(req: ChatRequest): AsyncIterable<StreamEvent> {
   });
 
   if (!res.ok || !res.body) {
-    throw new ProviderError(`Gemini responded with ${res.status}.`, res.status || 502, "gemini");
+    // Logged, never returned: the upstream status and body are provider
+    // internals. The caller only sees a generic message.
+    const detail = await res.text().catch(() => "");
+    console.error(`[ugnay] gemini upstream ${res.status}: ${detail.slice(0, 300)}`);
+    throw new ProviderError(
+      "This model could not answer. Please try again.",
+      res.status || 502,
+      "gemini",
+    );
   }
 
   const reader = res.body.getReader();

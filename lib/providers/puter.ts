@@ -104,7 +104,8 @@ async function* streamPuter(req: ChatRequest): AsyncIterable<StreamEvent> {
   const thinkingOn = Boolean(req.reasoning);
   const token = process.env.PUTER_API_TOKEN;
   if (!token) {
-    throw new ProviderError("PUTER_API_TOKEN is not set on the server.", 500, "puter");
+    console.error("[ugnay] puter is not configured: PUTER_API_TOKEN is not set.");
+    throw new ProviderError("This model is unavailable right now.", 500, "puter");
   }
 
   let res: Response;
@@ -136,17 +137,15 @@ async function* streamPuter(req: ChatRequest): AsyncIterable<StreamEvent> {
   }
 
   if (!res.ok || !res.body) {
+    // Logged, never returned: the response can name the account behind the
+    // token. The caller only ever sees a generic message.
     const detail = await res.text().catch(() => "");
     console.error(`[ugnay] puter ${res.status}: ${detail.slice(0, 300)}`);
     if (res.status === 401 || res.status === 403) {
-      throw new ProviderError(
-        "Puter rejected the server's token. Set a valid PUTER_API_TOKEN and restart.",
-        res.status,
-        "puter",
-      );
+      throw new ProviderError("This model is unavailable right now.", res.status, "puter");
     }
     throw new ProviderError(
-      detail.slice(0, 200) || "Puter returned an error.",
+      "This model could not answer. Please try again.",
       res.status || 502,
       "puter",
       isRetryableStatus(res.status),

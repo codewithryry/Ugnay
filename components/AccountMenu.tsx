@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  BarChart3,
   ChevronRight,
+  Columns3,
   Flag,
   HelpCircle,
   History,
@@ -20,16 +22,12 @@ import UserAvatar from "./UserAvatar";
 import { cn } from "@/lib/utils";
 
 /**
- * Destinations for the Help entries. Point these at the real URLs once they
- * exist; `null` renders the item as not-yet-available rather than a dead link.
- */
-/**
  * Help submenu entries. `href: null` means the destination does not exist yet,
  * so the row renders disabled with a "Soon" tag instead of a dead link — drop a
  * URL in and it becomes a real link with no other change.
  */
+/** Feedback is a modal rather than a destination, so it sits outside this list. */
 const HELP_ITEMS: { key: string; label: string; icon: LucideIcon; href: string | null }[] = [
-  { key: "feedback", label: "Feedback", icon: Flag, href: "/feedback" },
   { key: "faq", label: "FAQ", icon: HelpCircle, href: "/faq" },
   { key: "release-notes", label: "Release Notes", icon: History, href: "/release-notes" },
   { key: "community", label: "Community", icon: Users, href: null },
@@ -37,9 +35,10 @@ const HELP_ITEMS: { key: string; label: string; icon: LucideIcon; href: string |
 ];
 const UPGRADE_URL: string | null = "/upgrade";
 
-/** Help submenu geometry: it is a separate popup, not an inline expansion. */
+/** Help submenu geometry: always a popup beside the row, never inline. */
 const HELP_PANEL_WIDTH = 208;
 const HELP_PANEL_GAP = 8;
+const VIEWPORT_MARGIN = 8;
 
 const itemClass =
   "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left text-sm text-neutral-200 transition hover:bg-ink-800 focus:bg-ink-800 focus:outline-none";
@@ -49,11 +48,17 @@ const disabledClass =
 export default function AccountMenu({
   user,
   onOpenSettings,
+  onOpenFeedback,
+  onOpenUsage,
+  onOpenCompare,
   onSignOut,
   compact = false,
 }: {
   user: CurrentUser;
   onOpenSettings: () => void;
+  onOpenFeedback: () => void;
+  onOpenUsage: () => void;
+  onOpenCompare: () => void;
   onSignOut: () => void;
   /** Icon-only trigger for the collapsed sidebar; the menu itself is unchanged. */
   compact?: boolean;
@@ -72,16 +77,26 @@ export default function AccountMenu({
     const rect = helpRowRef.current?.getBoundingClientRect();
     if (!rect) return;
 
-    const fitsRight = rect.right + HELP_PANEL_GAP + HELP_PANEL_WIDTH <= window.innerWidth - 8;
+    const span = HELP_PANEL_GAP + HELP_PANEL_WIDTH;
+    const maxLeft = window.innerWidth - VIEWPORT_MARGIN - HELP_PANEL_WIDTH;
+    const fitsRight = rect.right + span <= window.innerWidth - VIEWPORT_MARGIN;
+    const fitsLeft = rect.left - span >= VIEWPORT_MARGIN;
+
+    // Beside the row is the whole point, so the panel is never folded into the
+    // menu. When a phone-width menu leaves no clear room on either side, the
+    // panel is pushed against the nearest screen edge: it overlaps the menu's
+    // far edge but still reads as a second panel off to the side.
     const left = fitsRight
       ? rect.right + HELP_PANEL_GAP
-      : Math.max(8, rect.left - HELP_PANEL_GAP - HELP_PANEL_WIDTH);
+      : fitsLeft
+        ? rect.left - span
+        : Math.max(VIEWPORT_MARGIN, maxLeft);
 
     // Roughly centred on the row, then kept fully on screen.
     const estimatedHeight = 320;
     const top = Math.min(
-      Math.max(8, rect.top - estimatedHeight / 2 + rect.height / 2),
-      Math.max(8, window.innerHeight - estimatedHeight - 8),
+      Math.max(VIEWPORT_MARGIN, rect.top - estimatedHeight / 2 + rect.height / 2),
+      Math.max(VIEWPORT_MARGIN, window.innerHeight - estimatedHeight - VIEWPORT_MARGIN),
     );
 
     setHelpAnchor({ top, left });
@@ -108,6 +123,21 @@ export default function AccountMenu({
   useEffect(() => () => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
   }, []);
+
+  // The beside panel is position-fixed, so it has to be re-measured whenever
+  // the row it points at can move.
+  useEffect(() => {
+    if (!helpOpen) return;
+    function reflow() {
+      placeHelp();
+    }
+    window.addEventListener("resize", reflow);
+    window.addEventListener("scroll", reflow, true);
+    return () => {
+      window.removeEventListener("resize", reflow);
+      window.removeEventListener("scroll", reflow, true);
+    };
+  }, [helpOpen]);
 
   // Hovering off Help shouldn't snap the submenu away while the pointer
   // travels across the gap between the two panels.
@@ -164,6 +194,34 @@ export default function AccountMenu({
               Settings
             </button>
 
+            <button
+              role="menuitem"
+              type="button"
+              onMouseEnter={() => setHelpOpen(false)}
+              onClick={() => {
+                close();
+                onOpenUsage();
+              }}
+              className={itemClass}
+            >
+              <BarChart3 className="h-4 w-4 text-neutral-500" aria-hidden />
+              Usage
+            </button>
+
+            <button
+              role="menuitem"
+              type="button"
+              onMouseEnter={() => setHelpOpen(false)}
+              onClick={() => {
+                close();
+                onOpenCompare();
+              }}
+              className={itemClass}
+            >
+              <Columns3 className="h-4 w-4 text-neutral-500" aria-hidden />
+              Compare models
+            </button>
+
             <div
               className="relative"
               onMouseEnter={() => {
@@ -213,6 +271,19 @@ export default function AccountMenu({
                   style={{ top: helpAnchor.top, left: helpAnchor.left, width: HELP_PANEL_WIDTH }}
                   className="fixed z-40 space-y-0.5 rounded-xl border border-ink-700 bg-ink-850 p-1.5 shadow-2xl animate-fade-in"
                 >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={itemClass}
+                    onClick={() => {
+                      close();
+                      onOpenFeedback();
+                    }}
+                  >
+                    <Flag className="h-4 w-4 text-neutral-500" aria-hidden />
+                    Feedback
+                  </button>
+
                   {HELP_ITEMS.map((item) =>
                     item.href ? (
                       <a

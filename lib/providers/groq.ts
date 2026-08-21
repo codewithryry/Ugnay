@@ -16,7 +16,10 @@ export const groqProvider: ChatProvider = {
   listModels: () => MODELS,
   streamChat(req: ChatRequest) {
     const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) throw new ProviderError("GROQ_API_KEY is not set on the server.", 500, "groq");
+    if (!apiKey) {
+      console.error("[ugnay] groq is not configured: GROQ_API_KEY is not set.");
+      throw new ProviderError("This model is unavailable right now.", 500, "groq");
+    }
     return streamOpenAICompatible({
       providerId: "groq",
       baseUrl: "https://api.groq.com/openai/v1",

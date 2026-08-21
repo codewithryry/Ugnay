@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { createClient } from "@/lib/supabase/client";
-import { titleFromMessage } from "@/lib/utils";
+import { DEFAULT_CHAT_TITLE, titleFromMessage } from "@/lib/utils";
 import { BUILTIN_PRESETS } from "@/lib/presets";
 import { isUnrecoverableAuthError } from "@/lib/supabase/auth-errors";
 import type { Chat, Message, Preset, Project, UserSettings } from "@/types/db";
@@ -67,6 +67,8 @@ interface ChatState {
   errorAction: "change-model" | null;
   /** Bumped to ask the model selector to open itself. */
   modelPickerRequests: number;
+  /** Block opened in the canvas beside the conversation; null when closed. */
+  artifact: { language: string; code: string } | null;
   sidebarOpen: boolean;
 
   init: (userId: string) => Promise<void>;
@@ -75,13 +77,27 @@ interface ChatState {
   newChat: () => void;
   createProject: (name: string) => Promise<void>;
   renameProject: (projectId: string, name: string) => Promise<void>;
-  saveProject: (projectId: string, patch: { name?: string; instructions?: string }) => Promise<void>;
+  saveProject: (
+    projectId: string,
+    patch: {
+      name?: string;
+      instructions?: string;
+      default_provider?: string | null;
+      default_model?: string | null;
+      memory_enabled?: boolean;
+    },
+  ) => Promise<void>;
   deleteProject: (projectId: string) => Promise<void>;
   setActiveProject: (projectId: string | null) => Promise<void>;
   newChatInProject: (projectId: string) => void;
   setPanelProject: (projectId: string | null) => void;
   renameChat: (chatId: string, title: string) => Promise<void>;
   deleteChat: (chatId: string) => Promise<void>;
+  /** Copies this conversation up to `messageId` into a new one and opens it. */
+  branchFromMessage: (messageId: string) => Promise<void>;
+  /** Sidebar organisation: pinned rows sort first, archived ones are hidden. */
+  setChatPinned: (chatId: string, pinned: boolean) => Promise<void>;
+  setChatArchived: (chatId: string, archived: boolean) => Promise<void>;
   setChatSystemPrompt: (chatId: string, prompt: string | null) => Promise<void>;
   setModel: (provider: string, model: string) => Promise<void>;
   saveSettings: (patch: Partial<UserSettings>) => Promise<void>;
@@ -97,6 +113,8 @@ interface ChatState {
   setWebSearch: (on: boolean) => void;
   setError: (error: string | null) => void;
   openModelPicker: () => void;
+  openArtifact: (language: string, code: string) => void;
+  closeArtifact: () => void;
 }
 
 let abortController: AbortController | null = null;
@@ -124,6 +142,25 @@ function reportSupabaseError(action: string, error: { message?: string; code?: s
   if (detail) console.error(`[ugnay] Could not ${action}:`, error);
   const generic = `Could not ${action}. Please try again.`;
   return process.env.NODE_ENV === "production" || !detail ? generic : `${generic} (${detail})`;
+}
+
+/**
+ * Optimistic flip of a chat's organisation flags, rolled back if the write
+ * fails. Shared by pin and archive so both behave identically.
+ */
+async function updateChatFlags(
+  chatId: string,
+  patch: { pinned?: boolean; archived?: boolean },
+  set: (partial: Partial<ChatState>) => void,
+  get: () => ChatState,
+) {
+  const previous = get().chats;
+  set({ chats: previous.map((c) => (c.id === chatId ? { ...c, ...patch } : c)) });
+
+  const { error } = await createClient().from("chats").update(patch).eq("id", chatId);
+  if (error) {
+    set({ chats: previous, error: reportSupabaseError("update this conversation", error) });
+  }
 }
 
 function sortChats(chats: Chat[]) {
@@ -155,6 +192,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   error: null,
   errorAction: null,
   modelPickerRequests: 0,
+  artifact: null,
   sidebarOpen: false,
 
   async init(userId) {
@@ -308,9 +346,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
   async saveProject(projectId, patch) {
     const name = patch.name?.trim();
     const instructions = patch.instructions?.trim();
-    const update: { name?: string; instructions?: string } = {};
+    const update: {
+      name?: string;
+      instructions?: string;
+      default_provider?: string | null;
+      default_model?: string | null;
+      memory_enabled?: boolean;
+    } = {};
     if (name) update.name = name;
     if (patch.instructions !== undefined) update.instructions = instructions ?? "";
+    if (patch.default_provider !== undefined) update.default_provider = patch.default_provider;
+    if (patch.default_model !== undefined) update.default_model = patch.default_model;
+    if (patch.memory_enabled !== undefined) update.memory_enabled = patch.memory_enabled;
     if (Object.keys(update).length === 0) return;
 
     const previous = get().projects;
@@ -408,6 +455,96 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return;
     }
     if (activeChatId === chatId) await get().setActiveChat(remaining[0]?.id ?? null);
+  },
+
+  /**
+   * Branches a conversation. The turns up to and including `messageId` are
+   * copied into a new chat, which records where it came from. The original is
+   * never modified, so both conversations continue independently.
+   */
+  async setChatPinned(chatId, pinned) {
+    await updateChatFlags(chatId, { pinned }, set, get);
+  },
+
+  async setChatArchived(chatId, archived) {
+    await updateChatFlags(chatId, { archived }, set, get);
+  },
+
+  async branchFromMessage(messageId) {
+    const { userId, activeChatId, messagesByChat, chats } = get();
+    // A temporary chat has no rows to copy.
+    if (!userId || !activeChatId || activeChatId === TEMPORARY_CHAT_ID) return;
+
+    const source = chats.find((c) => c.id === activeChatId);
+    const history = messagesByChat[activeChatId] ?? [];
+    const cut = history.findIndex((m) => m.id === messageId);
+    if (!source || cut === -1) return;
+
+    // Optimistic rows have local ids and are not in the database yet.
+    const carried = history.slice(0, cut + 1).filter((m) => !m.id.startsWith("local-"));
+    if (carried.length === 0) return;
+
+    const supabase = createClient();
+    const base = source.title.replace(/\s*\(branch(?: \d+)?\)$/, "").trim();
+    const { data: created, error: chatError } = await supabase
+      .from("chats")
+      .insert({
+        user_id: userId,
+        title: `${base || DEFAULT_CHAT_TITLE} (branch)`.slice(0, 200),
+        provider: source.provider,
+        model: source.model,
+        system_prompt: source.system_prompt,
+        project_id: source.project_id,
+        branched_from_chat_id: source.id,
+        branched_from_message_id: messageId,
+      })
+      .select("*")
+      .single();
+
+    if (chatError || !created) {
+      set({ error: reportSupabaseError("branch this conversation", chatError) });
+      if (isUnrecoverableAuthError(chatError)) void recoverFromAuthFailure();
+      return;
+    }
+
+    const branch = created as Chat;
+    // created_at is carried over so the copied turns keep their original order.
+    const { data: copied, error: messageError } = await supabase
+      .from("messages")
+      .insert(
+        carried.map((m) => ({
+          chat_id: branch.id,
+          user_id: userId,
+          role: m.role,
+          content: m.content,
+          provider: m.provider,
+          model: m.model,
+          prompt_tokens: m.prompt_tokens,
+          completion_tokens: m.completion_tokens,
+          total_tokens: m.total_tokens,
+          created_at: m.created_at,
+        })),
+      )
+      .select("*");
+
+    if (messageError) {
+      // Leaving an empty branch behind would be confusing; undo it.
+      await supabase.from("chats").delete().eq("id", branch.id);
+      set({ error: reportSupabaseError("branch this conversation", messageError) });
+      return;
+    }
+
+    set((state) => ({
+      chats: sortChats([branch, ...state.chats]),
+      messagesByChat: {
+        ...state.messagesByChat,
+        [branch.id]: ((copied ?? []) as Message[]).slice().sort((a, b) =>
+          a.created_at.localeCompare(b.created_at),
+        ),
+      },
+      activeChatId: branch.id,
+      error: null,
+    }));
   },
 
   async setChatSystemPrompt(chatId, prompt) {
@@ -812,6 +949,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   openModelPicker() {
     set((s) => ({ modelPickerRequests: s.modelPickerRequests + 1 }));
+  },
+
+  openArtifact(language, code) {
+    set({ artifact: { language, code } });
+  },
+
+  closeArtifact() {
+    set({ artifact: null });
   },
 }));
 

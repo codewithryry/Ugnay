@@ -1,9 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { ProviderError, resolveModel } from "@/lib/providers";
 import { createClient } from "@/lib/supabase/server";
+import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/** Dictation passes allowed per account per minute. */
+const RATE_LIMIT = 20;
+const RATE_WINDOW_MS = 60_000;
 
 /** Dictation is short; keep the call small and bounded. */
 const MAX_INPUT_CHARS = 4000;
@@ -24,7 +29,7 @@ const INSTRUCTIONS = {
  * never reaches this route: the client inserts the raw transcript instead.
  */
 export async function POST(request: NextRequest) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
     error: userError,
@@ -37,6 +42,10 @@ export async function POST(request: NextRequest) {
       { status: 401 },
     );
   }
+
+  // Keyed by account, so one caller cannot spend another's budget.
+  const limit = rateLimit(`refine:${user.id}`, RATE_LIMIT, RATE_WINDOW_MS);
+  if (!limit.allowed) return tooManyRequests(limit.retryAfter);
 
   let body: { text?: string };
   try {

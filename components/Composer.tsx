@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Brain, Globe, Loader2, Mic, Plus, Square } from "lucide-react";
+import { ArrowUp, Brain, Globe, Library, Loader2, Mic, Plus, Square } from "lucide-react";
 import ModelSelector from "./ModelSelector";
+import PromptLibraryModal from "./PromptLibraryModal";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/store/chatStore";
+import { takeGuestDraft } from "@/lib/guest-draft";
 import { useDictation } from "./useDictation";
 
 const MAX_HEIGHT = 200;
@@ -46,6 +48,7 @@ function ToolChip({
 
 export default function Composer({ centered }: { centered: boolean }) {
   const [value, setValue] = useState("");
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const streaming = useChatStore((s) => s.streaming);
@@ -72,6 +75,27 @@ export default function Composer({ centered }: { centered: boolean }) {
       }),
   });
 
+  /**
+   * Drops a saved prompt in at the caret, or appends it when the field is not
+   * focused. Never replaces what is already typed.
+   */
+  function insertPrompt(body: string) {
+    const el = textareaRef.current;
+    const text = body.trim();
+    if (!text) return;
+
+    setValue((current) => {
+      if (!current.trim()) return text;
+      const caret = el && document.activeElement === el ? el.selectionStart : current.length;
+      const before = current.slice(0, caret);
+      const after = current.slice(caret);
+      const lead = before && !before.endsWith("\n") && !before.endsWith(" ") ? "\n\n" : "";
+      return `${before}${lead}${text}${after}`;
+    });
+
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }
+
   // Grow with the content, up to a cap, then scroll.
   useEffect(() => {
     const el = textareaRef.current;
@@ -83,6 +107,14 @@ export default function Composer({ centered }: { centered: boolean }) {
   useEffect(() => {
     if (!streaming) textareaRef.current?.focus();
   }, [streaming, activeChatId]);
+
+  // A message typed before signing in is restored here, once, so the visitor
+  // picks up where they left off instead of retyping it.
+  useEffect(() => {
+    if (!hydrated) return;
+    const draft = takeGuestDraft();
+    if (draft) setValue((current) => current || draft);
+  }, [hydrated]);
 
   /**
    * Rich text editor behaviour, on when Settings → Behavior → "Enable Rich Text
@@ -150,9 +182,14 @@ export default function Composer({ centered }: { centered: boolean }) {
   return (
     <div
       className={cn(
-        // pb-safe clears the iOS home indicator when installed as a PWA.
-        "w-full px-3 pb-safe sm:px-4",
-        centered ? "pb-2 pt-1" : "pb-4 pt-1 sm:pb-5",
+        "w-full px-3 sm:px-4",
+        // The safe-area inset is added to the padding rather than replacing it:
+        // `pb-safe` alone collapses to 0 where there is no inset, which left the
+        // disclaimer sitting on the very bottom edge. Desktop keeps its old
+        // values through the `sm:` overrides.
+        centered
+          ? "pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 sm:pb-2"
+          : "pb-[calc(1.75rem+env(safe-area-inset-bottom))] pt-2 sm:pb-5",
       )}
     >
       <form
@@ -214,6 +251,14 @@ export default function Composer({ centered }: { centered: boolean }) {
               active={webSearch}
               onClick={() => setWebSearch(!webSearch)}
               title="Let the provider search the web for this reply"
+            />
+
+            <ToolChip
+              label="Prompts"
+              icon={Library}
+              active={libraryOpen}
+              onClick={() => setLibraryOpen(true)}
+              title="Insert a saved prompt"
             />
 
             {dictation.supported && (
@@ -286,6 +331,12 @@ export default function Composer({ centered }: { centered: boolean }) {
           Ugnay can make mistakes. Verify important information.
         </p>
       </form>
+
+      <PromptLibraryModal
+        open={libraryOpen}
+        onClose={() => setLibraryOpen(false)}
+        onInsert={insertPrompt}
+      />
     </div>
   );
 }

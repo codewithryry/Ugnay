@@ -1,11 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { MAX_SPEECH_CHARS, createSpeechStream, speechConfigured } from "@/lib/providers/speech";
 import { createClient } from "@/lib/supabase/server";
+import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 /** Long replies take a while to synthesise. */
 export const maxDuration = 60;
+
+/** Speech syntheses allowed per account per minute. */
+const RATE_LIMIT = 15;
+const RATE_WINDOW_MS = 60_000;
 
 /**
  * Reads a message aloud: streams synthesised audio for the given text back to
@@ -13,7 +18,7 @@ export const maxDuration = 60;
  * the server.
  */
 export async function POST(request: NextRequest) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
     error: userError,
@@ -26,6 +31,10 @@ export async function POST(request: NextRequest) {
       { status: 401 },
     );
   }
+
+  // Keyed by account, so one caller cannot spend another's budget.
+  const limit = rateLimit(`speech:${user.id}`, RATE_LIMIT, RATE_WINDOW_MS);
+  if (!limit.allowed) return tooManyRequests(limit.retryAfter);
 
   if (!speechConfigured()) {
     return NextResponse.json(
