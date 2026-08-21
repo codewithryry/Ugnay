@@ -155,6 +155,7 @@ async function* streamPuter(req: ChatRequest): AsyncIterable<StreamEvent> {
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let completionTokens: number | undefined;
 
   try {
     while (true) {
@@ -184,14 +185,25 @@ async function* streamPuter(req: ChatRequest): AsyncIterable<StreamEvent> {
           throw new ProviderError(String(message), 502, "puter", true);
         }
 
-        for (const event of readChunk(parsed, thinkingOn)) yield event;
+        for (const event of readChunk(parsed, thinkingOn)) {
+          if (event.type === "usage") completionTokens = event.usage.completionTokens;
+          yield event;
+        }
       }
     }
   } finally {
     reader.cancel().catch(() => {});
   }
 
-  yield { type: "done" };
+  yield {
+    type: "done",
+    // The driver gives no finish signal, so a reply cut off by the cap is
+    // inferred from the usage frame instead.
+    ...(completionTokens !== undefined &&
+    completionTokens >= Math.min(req.maxTokens, limits.maxTokens)
+      ? { finishReason: "length" as const }
+      : {}),
+  };
 }
 
 export const puterProvider: ChatProvider = {

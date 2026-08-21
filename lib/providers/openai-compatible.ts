@@ -102,6 +102,7 @@ export async function* streamOpenAICompatible(opts: {
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let finishReason: "stop" | "length" | undefined;
 
   try {
     while (true) {
@@ -167,6 +168,10 @@ export async function* streamOpenAICompatible(opts: {
           const text: string | undefined = delta?.content;
           if (text) yield { type: "delta", text };
 
+          const reason = parsed.choices?.[0]?.finish_reason;
+          if (reason === "length") finishReason = "length";
+          else if (reason) finishReason = "stop";
+
           if (parsed.usage) {
             yield {
               type: "usage",
@@ -184,7 +189,7 @@ export async function* streamOpenAICompatible(opts: {
     reader.cancel().catch(() => {});
   }
 
-  yield { type: "done" };
+  yield { type: "done", ...(finishReason ? { finishReason } : {}) };
 }
 
 /**

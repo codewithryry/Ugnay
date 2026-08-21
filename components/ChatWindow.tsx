@@ -8,16 +8,14 @@ import ChatHeaderMenu from "./ChatHeaderMenu";
 import Composer from "./Composer";
 import MessageList from "./MessageList";
 import { cn } from "@/lib/utils";
-import { GREETING_STORAGE_KEY, pickGreeting, type Greeting } from "@/lib/greetings";
+import { FALLBACK_GREETING, GREETING_STORAGE_KEY, pickGreeting, type Greeting } from "@/lib/greetings";
 import { useChatStore } from "@/store/chatStore";
 import { useIsCompact } from "./useIsCompact";
 
 export default function ChatWindow({
   user,
-  hydrated,
 }: {
   user: CurrentUser;
-  hydrated: boolean;
 }) {
   const activeChatId = useChatStore((s) => s.activeChatId);
   const messages = useChatStore((s) => (activeChatId ? s.messagesByChat[activeChatId] : undefined));
@@ -148,22 +146,22 @@ export default function ChatWindow({
           <>
             <div className="flex min-h-0 flex-1 items-center justify-center">
               <EmptyState
-                hydrated={hydrated}
                 name={user.nickname?.trim() || user.displayName}
                 chatKey={activeChatId}
                 compact
               />
             </div>
+            {temporaryChat && <TemporaryNotice />}
             <Composer centered={false} />
           </>
         ) : (
           // Desktop: greeting and composer centred together as one block.
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
             <EmptyState
-              hydrated={hydrated}
               name={user.nickname?.trim() || user.displayName}
               chatKey={activeChatId}
             />
+            {temporaryChat && <TemporaryNotice />}
             <Composer centered />
           </div>
         )
@@ -175,9 +173,23 @@ export default function ChatWindow({
             streaming={streaming}
             user={user}
           />
+          {temporaryChat && <TemporaryNotice />}
           <Composer centered={false} />
         </>
       )}
+    </div>
+  );
+}
+
+/** The standing notice shown while a temporary chat is active. */
+function TemporaryNotice() {
+  return (
+    <div
+      role="status"
+      className="flex items-center justify-center gap-2 px-4 py-2 text-xs text-neutral-500"
+    >
+      <EyeOff className="h-3.5 w-3.5 shrink-0" aria-hidden />
+      This chat won&apos;t appear in your history and will not be used to train models.
     </div>
   );
 }
@@ -234,20 +246,20 @@ function firstName(name: string) {
 }
 
 function EmptyState({
-  hydrated,
   name,
   chatKey,
   compact = false,
 }: {
-  hydrated: boolean;
   name: string;
   chatKey: string | null;
   /** PWA variant: one quiet centred line instead of the desktop hero. */
   compact?: boolean;
 }) {
-  // Both the clock and the random pick are resolved after mount so the server
-  // render (different timezone, different roll) cannot mismatch on hydration.
-  const [greeting, setGreeting] = useState<Greeting | null>(null);
+  // A fixed line renders from the very first paint, so the hero is never
+  // blank. The clock and the random pick are resolved after mount — the server
+  // render (different timezone, different roll) cannot mismatch on hydration —
+  // and replace the fallback once ready.
+  const [greeting, setGreeting] = useState<Greeting>(FALLBACK_GREETING);
   const who = firstName(name);
 
   useEffect(() => {
@@ -274,20 +286,18 @@ function EmptyState({
   return (
     <div className={cn("flex w-full flex-col items-center px-4", !compact && "pb-1")}>
       <div className={cn("text-center", !compact && "min-h-[4.5rem] sm:min-h-[5.5rem]")}>
-        {hydrated && greeting && (
-          <div className="animate-fade-in">
-            <h1
-              className={cn(
-                "tracking-tight text-neutral-100",
-                compact
-                  ? "text-lg font-normal"
-                  : "text-[1.65rem] font-semibold xs:text-3xl sm:text-[2.6rem]",
-              )}
-            >
-              {greeting.headline}
-            </h1>
-          </div>
-        )}
+        <div className="animate-fade-in">
+          <h1
+            className={cn(
+              "tracking-tight text-neutral-100",
+              compact
+                ? "text-lg font-normal"
+                : "text-[1.65rem] font-semibold xs:text-3xl sm:text-[2.6rem]",
+            )}
+          >
+            {greeting.headline}
+          </h1>
+        </div>
       </div>
     </div>
   );

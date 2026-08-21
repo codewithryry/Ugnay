@@ -33,6 +33,9 @@ export async function GET() {
       .from("chats")
       .select("*")
       .eq("user_id", user.id)
+      // The hidden temporary chat is stored server-side but is not part of
+      // the visible history, so the archive skips it as well.
+      .eq("is_temporary", false)
       .order("created_at", { ascending: true }),
     supabase
       .from("messages")

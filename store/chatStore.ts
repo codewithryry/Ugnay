@@ -118,6 +118,14 @@ interface ChatState {
 }
 
 let abortController: AbortController | null = null;
+/**
+ * True from the moment a send is accepted until it fully settles. The visible
+ * `streaming` flag only turns on after the optimistic append — and, for a new
+ * chat, after the awaited row insert — so a repeated click on send, regenerate
+ * or any other action could slip a second turn through that gap. This latch is
+ * set synchronously, before the first await.
+ */
+let sendInFlight = false;
 
 /**
  * Drops a session the server has already rejected and sends the user to the
@@ -167,6 +175,214 @@ function sortChats(chats: Chat[]) {
   return [...chats].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
 }
 
+/**
+ * One chat turn: optimistic append, streamed reply, persisted swap. Split out
+ * of `sendMessage` so the store action stays a thin gate around it.
+ */
+async function runSend(
+  text: string,
+  set: { (partial: Partial<ChatState>): void; (updater: (state: ChatState) => Partial<ChatState>): void },
+  get: () => ChatState,
+) {
+  const supabase = createClient();
+  const { userId, provider, model, thinking, webSearch } = get();
+  if (!userId) return;
+
+  set({ error: null, errorAction: null });
+  const temporary = get().temporaryChat;
+  let chatId = temporary ? TEMPORARY_CHAT_ID : get().activeChatId;
+
+  // First message of a draft: create the real chat row now. Temporary chats
+  // never get one.
+  if (!chatId) {
+    const { data, error } = await supabase
+      .from("chats")
+      .insert({
+        user_id: userId,
+        title: "New chat",
+        provider,
+        model,
+        project_id: get().activeProjectId,
+      })
+      .select("*")
+      .single();
+
+    if (error || !data) {
+      set({ error: reportSupabaseError("start a new chat", error) });
+      if (isUnrecoverableAuthError(error)) void recoverFromAuthFailure();
+      return;
+    }
+    const chat = data as Chat;
+    chatId = chat.id;
+    set((s) => ({
+      chats: sortChats([chat, ...s.chats]),
+      activeChatId: chat.id,
+      messagesByChat: { ...s.messagesByChat, [chat.id]: [] },
+    }));
+  }
+
+  const id = chatId;
+  const now = new Date().toISOString();
+  const optimisticUser: Message = {
+    id: `local-user-${now}`,
+    chat_id: id,
+    user_id: userId,
+    role: "user",
+    content: text,
+    provider: null,
+    model: null,
+    prompt_tokens: null,
+    completion_tokens: null,
+    total_tokens: null,
+    created_at: now,
+  };
+  const streamingId = `local-assistant-${now}`;
+  const optimisticAssistant: Message = {
+    ...optimisticUser,
+    id: streamingId,
+    role: "assistant",
+    content: "",
+    provider,
+    model,
+    created_at: new Date(Date.now() + 1).toISOString(),
+  };
+
+  set((s) => ({
+    streaming: true,
+    streamingChatId: id,
+    reasoningByChat: { ...s.reasoningByChat, [id]: "" },
+    messagesByChat: {
+      ...s.messagesByChat,
+      [id]: [...(s.messagesByChat[id] ?? []), optimisticUser, optimisticAssistant],
+    },
+  }));
+
+  // Reasoning is live-only: cleared when the turn starts, dropped on reload.
+  const appendReasoning = (delta: string) =>
+    set((s) => ({
+      reasoningByChat: { ...s.reasoningByChat, [id]: (s.reasoningByChat[id] ?? "") + delta },
+    }));
+
+  const appendDelta = (delta: string) =>
+    set((s) => ({
+      messagesByChat: {
+        ...s.messagesByChat,
+        [id]: (s.messagesByChat[id] ?? []).map((m) =>
+          m.id === streamingId ? { ...m, content: m.content + delta } : m,
+        ),
+      },
+    }));
+
+  abortController = new AbortController();
+
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        temporary
+          ? {
+              temporary: true,
+              content: text,
+              provider,
+              model,
+              // The server has no rows for this chat, so its prior turns
+              // travel with the request.
+              messages: (get().messagesByChat[id] ?? [])
+                .filter((m) => m.role !== "system" && !m.id.startsWith("local-"))
+                .map((m) => ({ role: m.role, content: m.content })),
+              thinking,
+              webSearch,
+            }
+          : { chatId: id, content: text, provider, model, thinking, webSearch },
+      ),
+      signal: abortController.signal,
+    });
+
+    if (!res.ok || !res.body) {
+      const detail = await res.json().catch(() => null);
+      console.error(`[ugnay] /api/chat failed (${res.status}):`, detail);
+      if (res.status === 401) {
+        void recoverFromAuthFailure();
+        throw new Error(
+          detail?.error ?? "Your session has expired. Please sign in again to keep chatting.",
+        );
+      }
+      throw new Error(detail?.error ?? `Request failed (${res.status}).`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let streamError: string | null = null;
+    let streamErrorAction: "change-model" | null = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let nl: number;
+      while ((nl = buffer.indexOf("\n")) !== -1) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+        if (!line) continue;
+
+        let event: any;
+        try {
+          event = JSON.parse(line);
+        } catch {
+          continue;
+        }
+
+        if (event.type === "delta") appendDelta(event.text);
+        else if (event.type === "reasoning") appendReasoning(event.text);
+        else if (event.type === "error") {
+          streamError = event.error;
+          streamErrorAction = event.action === "change-model" ? "change-model" : null;
+        }
+        // A fallback kicked in: tell the user which model answered instead.
+        else if (event.type === "notice") set({ error: event.notice });
+      }
+    }
+
+    if (streamError) set({ error: streamError, errorAction: streamErrorAction });
+
+    // Swap the optimistic rows for the persisted ones. A temporary chat has
+    // none, so its in-memory transcript stays exactly as streamed.
+    if (temporary) return;
+    await get().loadMessages(id);
+    const { data: fresh } = await supabase
+      .from("chats")
+      .select("title, updated_at")
+      .eq("id", id)
+      .maybeSingle();
+    if (fresh) {
+      set((s) => ({
+        chats: sortChats(
+          s.chats.map((c) =>
+            c.id === id ? { ...c, title: fresh.title, updated_at: fresh.updated_at } : c,
+          ),
+        ),
+      }));
+    }
+  } catch (err) {
+    if ((err as Error).name === "AbortError") {
+      if (!temporary) await get().loadMessages(id);
+    } else {
+      set({
+        error:
+          typeof navigator !== "undefined" && navigator.onLine === false
+            ? "You appear to be offline. Reconnect and try again."
+            : (err as Error).message,
+      });
+    }
+  } finally {
+    abortController = null;
+    set({ streaming: false, streamingChatId: null });
+  }
+}
+
 export const useChatStore = create<ChatState>((set, get) => ({
   userId: null,
   chats: [],
@@ -197,10 +413,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   async init(userId) {
     const supabase = createClient();
+    // The store outlives route changes: ChatApp remounts on every navigation,
+    // but an already-hydrated store still holds the same user's chats,
+    // projects and settings, so re-running the queries would only duplicate
+    // them. A different user (fresh page load) always hydrates.
+    if (get().hydrated && get().userId === userId) return;
     set({ userId });
 
     const [chatsRes, projectsRes, settingsRes, catalogRes] = await Promise.all([
-      supabase.from("chats").select("*").order("updated_at", { ascending: false }),
+      // The hidden temporary chat is recorded in the database but never
+      // listed, so History keeps its promise.
+      supabase
+        .from("chats")
+        .select("*")
+        .eq("is_temporary", false)
+        .order("updated_at", { ascending: false }),
       supabase.from("projects").select("*").order("created_at", { ascending: true }),
       supabase.from("user_settings").select("*").eq("user_id", userId).maybeSingle(),
       fetch("/api/models")
@@ -597,204 +824,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   async sendMessage(content) {
     const text = content.trim();
-    if (!text || get().streaming) return;
-
-    const supabase = createClient();
-    const { userId, provider, model, thinking, webSearch } = get();
-    if (!userId) return;
-
-    set({ error: null, errorAction: null });
-    const temporary = get().temporaryChat;
-    let chatId = temporary ? TEMPORARY_CHAT_ID : get().activeChatId;
-
-    // First message of a draft: create the real chat row now. Temporary chats
-    // never get one.
-    if (!chatId) {
-      const { data, error } = await supabase
-        .from("chats")
-        .insert({
-          user_id: userId,
-          title: "New chat",
-          provider,
-          model,
-          project_id: get().activeProjectId,
-        })
-        .select("*")
-        .single();
-
-      if (error || !data) {
-        set({ error: reportSupabaseError("start a new chat", error) });
-        if (isUnrecoverableAuthError(error)) void recoverFromAuthFailure();
-        return;
-      }
-      const chat = data as Chat;
-      chatId = chat.id;
-      set((s) => ({
-        chats: sortChats([chat, ...s.chats]),
-        activeChatId: chat.id,
-        messagesByChat: { ...s.messagesByChat, [chat.id]: [] },
-      }));
-    }
-
-    const id = chatId;
-    const now = new Date().toISOString();
-    const optimisticUser: Message = {
-      id: `local-user-${now}`,
-      chat_id: id,
-      user_id: userId,
-      role: "user",
-      content: text,
-      provider: null,
-      model: null,
-      prompt_tokens: null,
-      completion_tokens: null,
-      total_tokens: null,
-      created_at: now,
-    };
-    const streamingId = `local-assistant-${now}`;
-    const optimisticAssistant: Message = {
-      ...optimisticUser,
-      id: streamingId,
-      role: "assistant",
-      content: "",
-      provider,
-      model,
-      created_at: new Date(Date.now() + 1).toISOString(),
-    };
-
-    set((s) => ({
-      streaming: true,
-      streamingChatId: id,
-      reasoningByChat: { ...s.reasoningByChat, [id]: "" },
-      messagesByChat: {
-        ...s.messagesByChat,
-        [id]: [...(s.messagesByChat[id] ?? []), optimisticUser, optimisticAssistant],
-      },
-    }));
-
-    // Reasoning is live-only: cleared when the turn starts, dropped on reload.
-    const appendReasoning = (delta: string) =>
-      set((s) => ({
-        reasoningByChat: { ...s.reasoningByChat, [id]: (s.reasoningByChat[id] ?? "") + delta },
-      }));
-
-    const appendDelta = (delta: string) =>
-      set((s) => ({
-        messagesByChat: {
-          ...s.messagesByChat,
-          [id]: (s.messagesByChat[id] ?? []).map((m) =>
-            m.id === streamingId ? { ...m, content: m.content + delta } : m,
-          ),
-        },
-      }));
-
-    abortController = new AbortController();
-
+    // `sendInFlight` is checked and set synchronously, before any await. The
+    // visible `streaming` flag only turns on inside runSend — after the
+    // optimistic append and, for a brand-new chat, after the awaited row
+    // insert — so a double-clicked send, regenerate or resend could otherwise
+    // slip a second turn through that gap and duplicate the exchange.
+    if (!text || get().streaming || sendInFlight) return;
+    sendInFlight = true;
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          temporary
-            ? {
-                temporary: true,
-                content: text,
-                provider,
-                model,
-                // The server has no rows for this chat, so its prior turns
-                // travel with the request.
-                messages: (get().messagesByChat[id] ?? [])
-                  .filter((m) => m.role !== "system" && !m.id.startsWith("local-"))
-                  .map((m) => ({ role: m.role, content: m.content })),
-                thinking,
-                webSearch,
-              }
-            : { chatId: id, content: text, provider, model, thinking, webSearch },
-        ),
-        signal: abortController.signal,
-      });
-
-      if (!res.ok || !res.body) {
-        const detail = await res.json().catch(() => null);
-        console.error(`[ugnay] /api/chat failed (${res.status}):`, detail);
-        if (res.status === 401) {
-          void recoverFromAuthFailure();
-          throw new Error(
-            detail?.error ?? "Your session has expired. Please sign in again to keep chatting.",
-          );
-        }
-        throw new Error(detail?.error ?? `Request failed (${res.status}).`);
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let streamError: string | null = null;
-      let streamErrorAction: "change-model" | null = null;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        let nl: number;
-        while ((nl = buffer.indexOf("\n")) !== -1) {
-          const line = buffer.slice(0, nl).trim();
-          buffer = buffer.slice(nl + 1);
-          if (!line) continue;
-
-          let event: any;
-          try {
-            event = JSON.parse(line);
-          } catch {
-            continue;
-          }
-
-          if (event.type === "delta") appendDelta(event.text);
-          else if (event.type === "reasoning") appendReasoning(event.text);
-          else if (event.type === "error") {
-            streamError = event.error;
-            streamErrorAction = event.action === "change-model" ? "change-model" : null;
-          }
-          // A fallback kicked in: tell the user which model answered instead.
-          else if (event.type === "notice") set({ error: event.notice });
-        }
-      }
-
-      if (streamError) set({ error: streamError, errorAction: streamErrorAction });
-
-      // Swap the optimistic rows for the persisted ones. A temporary chat has
-      // none, so its in-memory transcript stays exactly as streamed.
-      if (temporary) return;
-      await get().loadMessages(id);
-      const { data: fresh } = await supabase
-        .from("chats")
-        .select("title, updated_at")
-        .eq("id", id)
-        .maybeSingle();
-      if (fresh) {
-        set((s) => ({
-          chats: sortChats(
-            s.chats.map((c) =>
-              c.id === id ? { ...c, title: fresh.title, updated_at: fresh.updated_at } : c,
-            ),
-          ),
-        }));
-      }
-    } catch (err) {
-      if ((err as Error).name === "AbortError") {
-        if (!temporary) await get().loadMessages(id);
-      } else {
-        set({
-          error:
-            typeof navigator !== "undefined" && navigator.onLine === false
-              ? "You appear to be offline. Reconnect and try again."
-              : (err as Error).message,
-        });
-      }
+      await runSend(text, set, get);
     } finally {
-      abortController = null;
-      set({ streaming: false, streamingChatId: null });
+      sendInFlight = false;
     }
   },
 

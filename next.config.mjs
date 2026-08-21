@@ -62,6 +62,17 @@ const nextConfig = {
   reactStrictMode: true,
   // Drops the X-Powered-By: Next.js banner.
   poweredByHeader: false,
+  experimental: {
+    /**
+     * Client-side Router Cache for dynamic pages. The default (0) refetches
+     * the whole tree on every visit, which waits on Supabase twice per
+     * navigation. A short window makes back-and-forth movement between the
+     * app routes render from the last payload instead. Auth transitions call
+     * router.refresh(), which invalidates this cache, so a sign-in or
+     * sign-out never serves another session's shell.
+     */
+    staleTimes: { dynamic: 30 },
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

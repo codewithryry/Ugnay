@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const chatId = body.chatId?.trim();
+  let chatId = body.chatId?.trim();
   const content = body.content?.trim();
   const temporary = body.temporary === true;
   if (!temporary && !chatId) {
@@ -213,8 +213,48 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // A temporary conversation never appears in History, but its turns are still
+  // recorded: they land in one hidden chat row per account (chats.is_temporary)
+  // that no listing reads. The first turn creates it; later turns reuse it.
+  if (temporary) {
+    const { data: existing } = await supabase
+      .from("chats")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("is_temporary", true)
+      .maybeSingle();
+
+    if (existing) {
+      chatId = existing.id;
+    } else {
+      const { data: created, error: createError } = await supabase
+        .from("chats")
+        .insert({ user_id: user.id, title: "Temporary chat", is_temporary: true })
+        .select("id")
+        .single();
+
+      if (created) {
+        chatId = created.id;
+      } else {
+        // Two first turns racing each other: the partial unique index lets
+        // exactly one insert win, so read the winner back instead of failing.
+        const { data: winner } = await supabase
+          .from("chats")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("is_temporary", true)
+          .maybeSingle();
+        if (!winner) {
+          console.error("[ugnay] /api/chat could not prepare the temporary chat:", createError);
+          return NextResponse.json({ error: "Could not save your message." }, { status: 500 });
+        }
+        chatId = winner.id;
+      }
+    }
+  }
+
   // RLS already scopes this, but the explicit filter keeps the intent obvious.
-  // A temporary chat has no row, so there is nothing to load or own.
+  // A temporary chat has no visible row, so there is nothing to load or own.
   let chat: {
     id: string;
     title: string | null;
@@ -283,7 +323,8 @@ export async function POST(request: NextRequest) {
   }
 
   // Metered providers are capped per account. Counted from stored replies, so
-  // no extra table is needed; temporary chats are not counted or capped.
+  // no extra table is needed; temporary replies are stored too, so they count
+  // toward the cap as well — they draw on the same credit balance.
   if (!temporary && AUTO_EXCLUDED_PROVIDERS.has(provider.id)) {
     const monthStart = new Date();
     monthStart.setUTCDate(1);
@@ -468,6 +509,10 @@ export async function POST(request: NextRequest) {
         send({ type: "start", userMessageId: savedUserId, provider: provider.id, model });
 
         let lastError: ProviderError | null = null;
+        /** The attempt that produced the streamed text; continuations reuse it. */
+        let used: (typeof attempts)[number] | null = null;
+        /** True when the last pass stopped because it hit the token cap. */
+        let truncated = false;
 
         for (let index = 0; index < attempts.length; index += 1) {
           const attempt = attempts[index];
@@ -487,6 +532,7 @@ export async function POST(request: NextRequest) {
               send({ type: "start", userMessageId: savedUserId, provider: attempt.provider.id, model: attempt.model });
             }
 
+            let passFinish: "stop" | "length" | undefined;
             for await (const event of attempt.provider.streamChat({
               model: attempt.model,
               messages: conversation,
@@ -506,8 +552,12 @@ export async function POST(request: NextRequest) {
                 send({ type: "delta", text: event.text });
               } else if (event.type === "usage") {
                 usage = event.usage;
+              } else if (event.type === "done") {
+                passFinish = event.finishReason;
               }
             }
+            used = attempt;
+            truncated = passFinish === "length";
             break;
           } catch (err) {
             // Only a retryable failure with nothing streamed yet may fall back;
@@ -519,6 +569,50 @@ export async function POST(request: NextRequest) {
             console.error(
               `[ugnay] ${attempt.provider.id}/${attempt.model} failed (${lastError.status}); trying the next model.`,
             );
+          }
+        }
+
+        /**
+         * A reply cut off by the token cap continues automatically, in the
+         * same stream and under the same message row, so a long answer always
+         * reaches its natural end and the user never has to type "continue".
+         * Bounded rounds keep a looping model from spinning forever.
+         */
+        const MAX_CONTINUATIONS = 3;
+        for (let round = 0; truncated && used && round < MAX_CONTINUATIONS; round += 1) {
+          try {
+            let passFinish: "stop" | "length" | undefined;
+            for await (const event of used.provider.streamChat({
+              model: used.model,
+              messages: [
+                ...conversation,
+                { role: "assistant", content: text },
+                {
+                  role: "user",
+                  content:
+                    "Your reply above was cut off mid-sentence by a length limit. Continue it seamlessly from exactly where it stopped. Do not repeat any earlier text, do not apologise, and do not add an introduction — output only the continuation.",
+                },
+              ],
+              temperature: settings?.temperature ?? 0.7,
+              maxTokens: settings?.max_tokens ?? 2048,
+              signal: abort.signal,
+              reasoning: used.extras && thinking ? { effort: thinking } : undefined,
+              webSearch: used.extras && webSearch,
+            })) {
+              if (event.type === "reasoning") {
+                if (thinking) send({ type: "reasoning", text: event.text });
+              } else if (event.type === "delta") {
+                text += event.text;
+                send({ type: "delta", text: event.text });
+              } else if (event.type === "done") {
+                passFinish = event.finishReason;
+              }
+            }
+            truncated = passFinish === "length";
+          } catch (err) {
+            // Whatever streamed before the failure is already a usable reply.
+            console.error("[ugnay] Continuation pass failed:", err);
+            break;
           }
         }
 
@@ -574,8 +668,10 @@ export async function POST(request: NextRequest) {
         }
 
         // Named from the first real exchange, not from the opening line alone,
-        // and only while the chat still carries the placeholder title.
-        if (!chat!.title || chat!.title === DEFAULT_CHAT_TITLE) {
+        // and only while the chat still carries the placeholder title. The
+        // hidden temporary chat keeps its placeholder — it has no History entry
+        // to name.
+        if (!temporary && (!chat!.title || chat!.title === DEFAULT_CHAT_TITLE)) {
           const title = await generateChatTitle(
             { provider, model },
             content,

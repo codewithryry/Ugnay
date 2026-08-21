@@ -2,13 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import {
+  AtSign,
   Check,
   ChevronLeft,
   ChevronRight,
+  CreditCard,
   Database,
   Loader2,
+  Mail,
   Palette,
   SlidersHorizontal,
   MessageSquareText,
@@ -17,9 +19,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import UserAvatar from "./UserAvatar";
+import AccountDangerZone from "./AccountDangerZone";
 import type { CurrentUser } from "./ChatApp";
 import { createClient } from "@/lib/supabase/client";
-import { CURRENT_PLAN, PLANS } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 import {
   AppearanceSection,
@@ -30,7 +32,6 @@ import {
   Section,
   actionClass,
   inputClass,
-  pillClass,
   rowActionClass,
 } from "./SettingsSections";
 import { allPresets, useChatStore, DEFAULT_MODEL, DEFAULT_PROVIDER } from "@/store/chatStore";
@@ -528,8 +529,8 @@ function OverviewNav({ onSelect }: { onSelect: (id: SectionId) => void }) {
 }
 
 /**
- * The Account detail view: identity at the top, then the plan, sign-up date and
- * the editable profile fields (name, nickname, email) backed by Supabase.
+ * The Account detail view: identity at the top, then the editable profile
+ * fields (name, nickname, email) backed by Supabase.
  */
 function AccountDetail({ user }: { user: CurrentUser }) {
   const router = useRouter();
@@ -540,13 +541,6 @@ function AccountDetail({ user }: { user: CurrentUser }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  // The tier the account is actually on; paid plans have no checkout yet.
-  const currentPlan = PLANS.find((plan) => plan.id === CURRENT_PLAN);
-  const created = new Date(user.createdAt);
-  const createdLabel = Number.isNaN(created.getTime())
-    ? "Unknown"
-    : created.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
 
   function reset() {
     setEditing(null);
@@ -626,18 +620,9 @@ function AccountDetail({ user }: { user: CurrentUser }) {
       </div>
 
       <div className="mt-4">
-        <Row label="Plan">
-          <span className="truncate text-sm text-neutral-400">
-            {currentPlan?.name ?? "Ugnay Free"}
-          </span>
-          <Link href="/upgrade" className={pillClass}>
-            Upgrade
-          </Link>
-        </Row>
-
-        <Row label="Full name">
+        <Row label="Full name" icon={User}>
           {editing === "name" ? (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-1 flex-wrap items-center justify-between gap-2">
               <label htmlFor="account-name" className="sr-only">
                 Full name
               </label>
@@ -647,26 +632,28 @@ function AccountDetail({ user }: { user: CurrentUser }) {
                 onChange={(e) => setName(e.target.value)}
                 className="w-44 rounded-lg border border-ink-700 bg-ink-950 px-2.5 py-1.5 text-sm text-neutral-100 focus:border-ink-600"
               />
-              <button type="button" onClick={() => void saveName()} disabled={busy} className={actionClass}>
-                Save
-              </button>
-              <button type="button" onClick={reset} className={cn(actionClass, "border-transparent")}>
-                Cancel
-              </button>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => void saveName()} disabled={busy} className={actionClass}>
+                  Save
+                </button>
+                <button type="button" onClick={reset} className={cn(actionClass, "border-transparent")}>
+                  Cancel
+                </button>
+              </div>
             </div>
           ) : (
             <>
               <span className="truncate text-sm text-neutral-400">{user.displayName}</span>
               <button type="button" onClick={() => setEditing("name")} className={rowActionClass}>
-                Edit name
+                  Edit
               </button>
             </>
           )}
         </Row>
 
-        <Row label="Nickname">
+        <Row label="Nickname" icon={AtSign}>
           {editing === "nickname" ? (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-1 flex-wrap items-center justify-between gap-2">
               <label htmlFor="account-nickname" className="sr-only">
                 Nickname
               </label>
@@ -677,17 +664,19 @@ function AccountDetail({ user }: { user: CurrentUser }) {
                 placeholder="What should Ugnay call you?"
                 className="w-44 rounded-lg border border-ink-700 bg-ink-950 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-ink-600"
               />
-              <button
-                type="button"
-                onClick={() => void saveNickname()}
-                disabled={busy}
-                className={actionClass}
-              >
-                Save
-              </button>
-              <button type="button" onClick={reset} className={cn(actionClass, "border-transparent")}>
-                Cancel
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void saveNickname()}
+                  disabled={busy}
+                  className={actionClass}
+                >
+                  Save
+                </button>
+                <button type="button" onClick={reset} className={cn(actionClass, "border-transparent")}>
+                  Cancel
+                </button>
+              </div>
             </div>
           ) : (
             <>
@@ -695,15 +684,15 @@ function AccountDetail({ user }: { user: CurrentUser }) {
                 {user.nickname ?? "Not set"}
               </span>
               <button type="button" onClick={() => setEditing("nickname")} className={rowActionClass}>
-                Edit nickname
+                  Edit
               </button>
             </>
           )}
         </Row>
 
-        <Row label="Email">
+        <Row label="Email" icon={Mail}>
           {editing === "email" ? (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-1 flex-wrap items-center justify-between gap-2">
               <label htmlFor="account-email" className="sr-only">
                 Email address
               </label>
@@ -714,24 +703,26 @@ function AccountDetail({ user }: { user: CurrentUser }) {
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-56 rounded-lg border border-ink-700 bg-ink-950 px-2.5 py-1.5 text-sm text-neutral-100 focus:border-ink-600"
               />
-              <button type="button" onClick={() => void saveEmail()} disabled={busy} className={actionClass}>
-                Save
-              </button>
-              <button type="button" onClick={reset} className={cn(actionClass, "border-transparent")}>
-                Cancel
-              </button>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => void saveEmail()} disabled={busy} className={actionClass}>
+                  Save
+                </button>
+                <button type="button" onClick={reset} className={cn(actionClass, "border-transparent")}>
+                  Cancel
+                </button>
+              </div>
             </div>
           ) : (
             <>
               <span className="truncate text-sm text-neutral-400">{user.email}</span>
               <button type="button" onClick={() => setEditing("email")} className={rowActionClass}>
-                Update email
+                Edit
               </button>
             </>
           )}
         </Row>
 
-        <Row label="Subscription">
+        <Row label="Subscription" icon={CreditCard}>
           <span className="truncate text-sm text-neutral-400">Manage your Ugnay subscription</span>
           <span
             aria-disabled
@@ -739,13 +730,6 @@ function AccountDetail({ user }: { user: CurrentUser }) {
           >
             Manage
           </span>
-        </Row>
-      </div>
-
-      {/* Read-only provenance, kept apart from the editable rows above. */}
-      <div className="mt-6 border-t border-ink-800 pt-3">
-        <Row label="Account created">
-          <span className="text-sm text-neutral-400">{createdLabel}</span>
         </Row>
       </div>
 
@@ -759,6 +743,8 @@ function AccountDetail({ user }: { user: CurrentUser }) {
           {error}
         </p>
       )}
+
+      <AccountDangerZone />
     </div>
   );
 }

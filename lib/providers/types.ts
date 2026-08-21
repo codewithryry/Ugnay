@@ -57,7 +57,11 @@ export type StreamEvent =
   /** Reasoning tokens, streamed separately from the answer. */
   | { type: "reasoning"; text: string }
   | { type: "usage"; usage: Usage }
-  | { type: "done" };
+  /**
+   * End of the stream. `finishReason: "length"` means the reply was cut off
+   * by the token cap rather than finished, so the caller can continue it.
+   */
+  | { type: "done"; finishReason?: "stop" | "length" };
 
 export interface ChatProvider {
   id: string;

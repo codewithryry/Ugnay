@@ -52,6 +52,7 @@ async function* stream(req: ChatRequest): AsyncIterable<StreamEvent> {
   const decoder = new TextDecoder();
   let buffer = "";
   let sep: number;
+  let finishReason: "stop" | "length" | undefined;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -74,6 +75,10 @@ async function* stream(req: ChatRequest): AsyncIterable<StreamEvent> {
       const text = parsed.candidates?.[0]?.content?.parts?.map((p: any) => p.text ?? "").join("");
       if (text) yield { type: "delta", text };
 
+      const reason = parsed.candidates?.[0]?.finishReason;
+      if (reason === "MAX_TOKENS") finishReason = "length";
+      else if (reason) finishReason = "stop";
+
       if (parsed.usageMetadata) {
         yield {
           type: "usage",
@@ -87,7 +92,7 @@ async function* stream(req: ChatRequest): AsyncIterable<StreamEvent> {
     }
   }
 
-  yield { type: "done" };
+  yield { type: "done", ...(finishReason ? { finishReason } : {}) };
 }
 
 export const geminiProvider: ChatProvider = {

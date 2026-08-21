@@ -13,6 +13,7 @@ export default function Modal({
   children,
   footer,
   hideHeader = false,
+  hideClose = false,
   panelClassName = "max-w-2xl",
   contentClassName = "overflow-y-auto overscroll-contain px-4 py-5 sm:px-5",
 }: {
@@ -24,6 +25,8 @@ export default function Modal({
   footer?: React.ReactNode;
   /** Hide the default header when the content renders its own. */
   hideHeader?: boolean;
+  /** Hide the X button; Escape and backdrop click still close. */
+  hideClose?: boolean;
   /** Extra classes for the dialog panel (width, height). */
   panelClassName?: string;
   /** Padding/layout classes for the scrollable body. */
@@ -31,6 +34,10 @@ export default function Modal({
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreFocusTo = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -49,7 +56,7 @@ export default function Modal({
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab") return;
@@ -75,7 +82,7 @@ export default function Modal({
       document.body.style.overflow = previousOverflow;
       restoreFocusTo.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -108,14 +115,16 @@ export default function Modal({
               </p>
             )}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close dialog"
-            className="shrink-0 rounded-lg p-2 sm:p-1.5 text-neutral-400 hover:bg-ink-800 hover:text-neutral-100"
-          >
-            <X className="h-4 w-4" aria-hidden />
-          </button>
+          {!hideClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close dialog"
+              className="shrink-0 rounded-lg p-2 sm:p-1.5 text-neutral-400 hover:bg-ink-800 hover:text-neutral-100"
+            >
+              <X className="h-4 w-4" aria-hidden />
+            </button>
+          )}
         </div>
         )}
 

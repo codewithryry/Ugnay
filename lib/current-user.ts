@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { isMissingSession } from "@/lib/supabase/auth-errors";
 
@@ -14,9 +15,10 @@ export interface CurrentUserRecord {
 /**
  * Resolves the signed-in user and their profile row. Shared by every page that
  * renders the app shell. Returns null when there is no session so the caller
- * can redirect.
+ * can redirect. Memoized per request, so callers in one render share one
+ * auth + profile round trip instead of repeating it.
  */
-export async function getCurrentUser(): Promise<CurrentUserRecord | null> {
+export const getCurrentUser = cache(async (): Promise<CurrentUserRecord | null> => {
   const supabase = await createClient();
   const {
     data: { user },
@@ -78,4 +80,4 @@ export async function getCurrentUser(): Promise<CurrentUserRecord | null> {
     nickname: profile?.nickname ?? null,
     createdAt: user.created_at,
   };
-}
+});

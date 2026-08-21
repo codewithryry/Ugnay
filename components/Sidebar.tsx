@@ -27,8 +27,8 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
+import Image from "next/image";
 import AccountMenu, { SoonTag } from "./AccountMenu";
 import type { CurrentUser } from "./ChatApp";
 import { createClient } from "@/lib/supabase/client";
@@ -144,12 +144,16 @@ export default function Sidebar({
             collapsed && "md:h-10 md:w-10 md:justify-center md:px-0",
           )}
         >
+          {/* Expanded shows the wordmark alone; the mark returns once collapsed. */}
           <Image
             src="/logo/logo-192.png"
             alt=""
             width={28}
             height={28}
-            className={cn("h-7 w-7 shrink-0 rounded-lg", collapsed && "md:h-8 md:w-8")}
+            className={cn(
+              "hidden h-7 w-7 shrink-0 rounded-lg",
+              collapsed ? "md:block" : "md:hidden",
+            )}
           />
           <span
             className={cn(

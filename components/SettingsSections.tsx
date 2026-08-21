@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Loader2, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronDown, Loader2, Plus, Trash2, type LucideIcon } from "lucide-react";
 import { applyTheme, THEME_STORAGE_KEY, type ThemeChoice } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import MemoryModal from "./MemoryModal";
@@ -34,10 +34,21 @@ export const actionClass =
 export const inputClass =
   "w-full rounded-xl border border-ink-700 bg-ink-950 px-3.5 py-3 text-base leading-6 text-neutral-100 placeholder:text-neutral-600 focus:border-ink-600 sm:text-sm";
 
-export function Row({ label, children }: { label: string; children: React.ReactNode }) {
+export function Row({
+  label,
+  icon: Icon,
+  children,
+}: {
+  label: string;
+  icon?: LucideIcon;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-ink-800 py-3 last:border-b-0">
-      <p className="w-full shrink-0 text-sm text-neutral-100 sm:w-32">{label}</p>
+      <p className="flex w-full shrink-0 items-center gap-2 text-sm text-neutral-100 sm:w-32">
+        {Icon && <Icon className="h-4 w-4 shrink-0 text-neutral-500" aria-hidden />}
+        {label}
+      </p>
       <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-3 gap-y-2">
         {children}
       </div>

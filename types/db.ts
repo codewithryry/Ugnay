@@ -26,6 +26,11 @@ export interface Chat {
   /** Sidebar organisation: pinned rows sort first, archived ones are hidden. */
   pinned: boolean;
   archived: boolean;
+  /**
+   * The hidden conversation backing Temporary Chat: its turns are stored for
+   * the record, but no listing ever shows the row.
+   */
+  is_temporary: boolean;
   created_at: string;
   updated_at: string;
 }

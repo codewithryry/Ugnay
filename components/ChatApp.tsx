@@ -8,7 +8,7 @@ import SettingsPanel from "./SettingsPanel";
 import WorkspacePanel from "./WorkspacePanel";
 import FeedbackModal from "./FeedbackModal";
 import UsageModal from "./UsageModal";
-import ModelCompareModal from "./ModelCompareModal";
+import ModelCompareView from "./ModelCompareView";
 import ArtifactPanel from "./ArtifactPanel";
 import ReleaseNotesView from "./ReleaseNotesView";
 import Sidebar from "./Sidebar";
@@ -131,6 +131,7 @@ export default function ChatApp(props: {
         // Innermost surface first, so one press closes one thing.
         const state = useChatStore.getState();
         if (state.artifact) state.closeArtifact();
+        else if (compareOpen) setCompareOpen(false);
         else if (state.panelProjectId) state.setPanelProject(null);
         else setSidebarOpen(false);
         return;
@@ -162,7 +163,7 @@ export default function ChatApp(props: {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [setSidebarOpen, router, props.view, isChatView]);
+  }, [setSidebarOpen, router, props.view, isChatView, compareOpen]);
 
   const user: CurrentUser = {
     userId: props.userId,
@@ -197,9 +198,11 @@ export default function ChatApp(props: {
 
       {props.view === "release-notes" ? (
         <ReleaseNotesView />
+      ) : compareOpen ? (
+        <ModelCompareView onClose={() => setCompareOpen(false)} />
       ) : (
         <>
-          <ChatWindow user={user} hydrated={hydrated} />
+          <ChatWindow user={user} />
 
           {/* Workspace settings and instructions, beside the conversation. */}
           <WorkspacePanel />
@@ -217,8 +220,6 @@ export default function ChatApp(props: {
       <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
 
       <UsageModal open={usageOpen} onClose={() => setUsageOpen(false)} />
-
-      <ModelCompareModal open={compareOpen} onClose={() => setCompareOpen(false)} />
     </div>
   );
 }

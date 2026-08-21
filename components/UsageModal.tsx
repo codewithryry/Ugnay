@@ -158,15 +158,7 @@ export default function UsageModal({ open, onClose }: { open: boolean; onClose: 
       title="Usage"
       description="Your own messages and the token counts providers reported for them."
       panelClassName="max-w-2xl"
-      footer={
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-ink-950 transition hover:bg-white"
-        >
-          Done
-        </button>
-      }
+      hideClose
     >
       <div className="flex items-center gap-1.5">
         {RANGES.map((option) => (

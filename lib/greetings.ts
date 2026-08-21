@@ -108,3 +108,16 @@ export function pickGreeting({
 }
 
 export const GREETING_STORAGE_KEY = "ugnay-last-greeting";
+
+/**
+ * Rendered the instant an empty chat opens, before the time-aware pick exists
+ * (the clock and the random roll are resolved after mount so the server render
+ * cannot mismatch). Deliberately neutral — no name, no day part — so it is
+ * correct at any hour for any account. The keys match real template lines, so
+ * the dynamic pick still avoids repeating them.
+ */
+export const FALLBACK_GREETING: Greeting = {
+  headline: "What can I help with?",
+  subtitle: "Ready when you are.",
+  keys: { headline: "What can I help with?", subtitle: "Ready when you are." },
+};

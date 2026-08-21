@@ -322,6 +322,15 @@ alter table public.chats add column if not exists archived boolean not null defa
 create index if not exists chats_user_pinned_idx
   on public.chats (user_id, pinned desc, updated_at desc);
 
+-- ------------------------------------------------------- temporary chat
+-- Temporary Chat keeps its promise ("won't appear in your history") while the
+-- turns are still recorded: they land in one hidden chat row per account that
+-- no listing reads. The partial unique index guarantees at most one per user,
+-- so concurrent first turns cannot create two.
+alter table public.chats add column if not exists is_temporary boolean not null default false;
+create unique index if not exists chats_one_temporary_idx
+  on public.chats (user_id) where is_temporary;
+
 -- ------------------------------------------------------ workspace settings
 -- Per-workspace model default and memory switch. Null model columns mean
 -- "use the account default", so existing workspaces are unaffected.
@@ -462,3 +471,33 @@ $$;
 
 revoke all on function public.get_shared_chat(text) from public;
 grant execute on function public.get_shared_chat(text) to anon, authenticated;
+
+-- ======================================================================
+-- v0.7 — self-service account deletion
+-- Idempotent like everything above: safe to re-run on an existing project.
+-- ======================================================================
+
+-- Deletes the caller's own auth user. Every public table references
+-- auth.users(id) on delete cascade, so this one delete wipes the profile,
+-- chats, messages, projects, settings, prompts, share links, file records,
+-- embeddings, feedback — and the sign-in sessions themselves.
+--
+-- Security definer because only the postgres role may write to auth.users;
+-- auth.uid() pins the delete to the caller's own row, so no one can remove
+-- another account.
+create or replace function public.delete_own_account()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'delete_own_account requires an authenticated caller';
+  end if;
+  delete from auth.users where id = auth.uid();
+end $$;
+
+revoke all on function public.delete_own_account() from public;
+revoke all on function public.delete_own_account() from anon;
+grant execute on function public.delete_own_account() to authenticated;
