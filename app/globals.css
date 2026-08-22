@@ -18,6 +18,19 @@
   --fg-400: 163 163 163;
   --fg-500: 115 115 115;
   --fg-600: 82 82 82;
+  /* Semantic accents. Swapped per theme so a banner or a link keeps the same
+   * meaning and the same contrast in both. `*-soft` is the surface fill. */
+  --accent: 56 189 248;
+  --accent-strong: 125 211 252;
+  --accent-soft: 8 47 73;
+  --success: 52 211 153;
+  --success-soft: 2 44 34;
+  --warning: 252 211 77;
+  --warning-soft: 69 26 3;
+  --danger: 248 113 113;
+  --danger-soft: 69 10 10;
+  /* Scrollbar thumb, so light mode does not keep the dark chrome. */
+  --scrollbar: 44 44 49;
 }
 
 :root[data-theme="light"] {
@@ -34,6 +47,16 @@
   --fg-400: 88 88 99;
   --fg-500: 110 110 122;
   --fg-600: 140 140 152;
+  --accent: 2 132 199;
+  --accent-strong: 3 105 161;
+  --accent-soft: 240 249 255;
+  --success: 5 150 105;
+  --success-soft: 236 253 245;
+  --warning: 180 83 9;
+  --warning-soft: 255 251 235;
+  --danger: 220 38 38;
+  --danger-soft: 254 242 242;
+  --scrollbar: 203 203 212;
 }
 
 /* Headings take the display face; everything else inherits Inter from body. */
@@ -93,22 +116,27 @@ body {
 /* Slim, unobtrusive scrollbars to match the dark chrome. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #33333a transparent;
+  scrollbar-color: rgb(var(--scrollbar)) transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background-color: #2c2c31;
+  background-color: rgb(var(--scrollbar));
   border-radius: 9999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(var(--ink-600));
 }
 *::-webkit-scrollbar-track {
   background: transparent;
 }
 
+/* Flush accent ring: the previous offset ring assumed an ink-950 backdrop and
+ * drew a dark gap around controls sitting on lighter surfaces. */
 :focus-visible {
-  @apply outline-none ring-2 ring-neutral-500 ring-offset-2 ring-offset-ink-950;
+  @apply outline-none ring-2 ring-accent/70 ring-offset-0;
 }
 
 /*
@@ -145,7 +173,7 @@ body {
   @apply mt-5 text-base font-semibold text-neutral-100;
 }
 .prose-ugnay a {
-  @apply text-sky-400 underline underline-offset-2 hover:text-sky-300;
+  @apply text-accent underline underline-offset-2 hover:text-accent-strong;
 }
 .prose-ugnay strong {
   @apply font-semibold text-neutral-100;

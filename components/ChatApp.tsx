@@ -11,6 +11,8 @@ import UsageModal from "./UsageModal";
 import ModelCompareView from "./ModelCompareView";
 import ArtifactPanel from "./ArtifactPanel";
 import ReleaseNotesView from "./ReleaseNotesView";
+import WorkflowsView from "./WorkflowsView";
+import KnowledgeView from "./KnowledgeView";
 import Sidebar from "./Sidebar";
 import { applyTheme } from "@/lib/theme";
 import { DEFAULT_CHAT_TITLE } from "@/lib/utils";
@@ -35,7 +37,7 @@ export default function ChatApp(props: {
   nickname: string | null;
   createdAt: string;
   /** Which surface fills the main area. Defaults to the chat window. */
-  view?: "chat" | "search" | "release-notes" | "feedback";
+  view?: "chat" | "search" | "release-notes" | "feedback" | "workflows" | "knowledge";
 }) {
   const init = useChatStore((s) => s.init);
   const hydrated = useChatStore((s) => s.hydrated);
@@ -178,7 +180,7 @@ export default function ChatApp(props: {
     <div className="flex h-full h-[100dvh] w-full overflow-hidden bg-ink-950">
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-[1px] md:hidden"
+          className="fixed inset-0 z-30 bg-black/60 md:hidden"
           aria-hidden
           onClick={() => setSidebarOpen(false)}
         />
@@ -198,6 +200,10 @@ export default function ChatApp(props: {
 
       {props.view === "release-notes" ? (
         <ReleaseNotesView />
+      ) : props.view === "workflows" ? (
+        <WorkflowsView />
+      ) : props.view === "knowledge" ? (
+        <KnowledgeView />
       ) : compareOpen ? (
         <ModelCompareView onClose={() => setCompareOpen(false)} />
       ) : (

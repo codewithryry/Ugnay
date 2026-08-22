@@ -93,7 +93,7 @@ export function AppearanceSection({ compact = false }: { compact?: boolean }) {
                   active
                     ? compact
                       ? "border-neutral-300"
-                      : "border-sky-500 ring-1 ring-sky-500/60"
+                      : "border-accent ring-1 ring-accent/50"
                     : "border-ink-700",
                 )}
               >
@@ -219,7 +219,7 @@ export function BehaviorSection() {
         onChange={(v) => void setNotify(v)}
       />
       {notifyBlocked && (
-        <p role="alert" className="pb-2 text-xs text-red-400">
+        <p role="alert" className="pb-2 text-xs text-danger">
           Your browser blocked notifications for this site. Allow them in the site settings, then
           try again.
         </p>
@@ -307,7 +307,7 @@ export function PresetsSection({
                 type="button"
                 onClick={() => void onRemove(preset.id)}
                 aria-label={`Delete preset ${preset.name}`}
-                className="rounded p-1 text-neutral-500 hover:bg-ink-800 hover:text-red-400"
+                className="rounded p-1 text-neutral-500 hover:bg-ink-800 hover:text-danger"
               >
                 <Trash2 className="h-3.5 w-3.5" aria-hidden />
               </button>
@@ -492,12 +492,12 @@ export function DataSection() {
         />
 
         {confirmAll && (
-          <p role="alert" className="pb-3 text-xs text-red-300">
+          <p role="alert" className="pb-3 text-xs text-danger">
             Delete all {chats.length} conversations? This cannot be undone.{" "}
             <button
               type="button"
               onClick={() => setConfirmAll(false)}
-              className="underline underline-offset-2 hover:text-red-200"
+              className="underline underline-offset-2 hover:text-danger"
             >
               Cancel
             </button>
@@ -505,12 +505,12 @@ export function DataSection() {
         )}
 
         {notice && (
-          <p role="status" className="pb-3 text-xs text-emerald-400">
+          <p role="status" className="pb-3 text-xs text-success">
             {notice}
           </p>
         )}
         {error && (
-          <p role="alert" className="pb-3 text-xs text-red-400">
+          <p role="alert" className="pb-3 text-xs text-danger">
             {error}
           </p>
         )}
@@ -556,7 +556,7 @@ export function ActionRow({
           className={cn(
             "flex h-9 w-full items-center justify-center gap-1.5 rounded-full border text-xs transition disabled:opacity-50 sm:h-8",
             destructive
-              ? "border-red-900/70 text-red-300 hover:bg-red-950/40"
+              ? "border-danger/30 text-danger hover:bg-danger/10"
               : "border-ink-700 text-neutral-200 hover:bg-ink-800",
           )}
         >

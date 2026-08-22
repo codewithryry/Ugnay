@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -137,12 +138,12 @@ export default function LoginForm() {
         </div>
 
         {error && (
-          <p role="alert" className="rounded-lg bg-red-950/60 px-3 py-2 text-xs text-red-300">
+          <p role="alert" className="rounded-lg border border-danger/20 bg-danger-soft px-3 py-2 text-xs text-danger">
             {error}
           </p>
         )}
         {notice && (
-          <p role="status" className="rounded-lg bg-emerald-950/60 px-3 py-2 text-xs text-emerald-300">
+          <p role="status" className="rounded-lg border border-success/20 bg-success-soft px-3 py-2 text-xs text-success">
             {notice}
           </p>
         )}
@@ -172,24 +173,23 @@ export default function LoginForm() {
         </button>
       </p>
 
-      <div className="mt-6 text-center text-[11px] leading-relaxed text-neutral-600">
-        <p>
-          By continuing, you agree to Ugnay&rsquo;s <LegalTerm>Terms of Service</LegalTerm> and{" "}
-          <LegalTerm>Privacy Policy</LegalTerm>.
-        </p>
-        <p className="mt-0.5">
-          <LegalTerm>Your privacy choices</LegalTerm>
-        </p>
-      </div>
+      <p className="mt-6 text-center text-[11px] leading-relaxed text-neutral-600">
+        By continuing, you agree to Ugnay&rsquo;s{" "}
+        <LegalLink href="/terms">Terms of Service</LegalLink> and{" "}
+        <LegalLink href="/privacy">Privacy Policy</LegalLink>.
+      </p>
     </div>
   );
 }
 
-/**
- * Terms / Privacy have no pages yet, so these read as emphasis rather than
- * links — a dead link is worse than plain text. Swap the spans for <Link>
- * once /terms and /privacy exist.
- */
-function LegalTerm({ children }: { children: React.ReactNode }) {
-  return <span className="text-neutral-500 underline underline-offset-2">{children}</span>;
+/** The two legal pages, styled to read as part of the sentence. */
+function LegalLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link
+      href={href}
+      className="text-neutral-500 underline underline-offset-2 transition hover:text-neutral-300"
+    >
+      {children}
+    </Link>
+  );
 }

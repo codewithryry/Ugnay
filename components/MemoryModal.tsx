@@ -140,7 +140,7 @@ export default function MemoryModal({ open, onClose }: { open: boolean; onClose:
         <button
           type="button"
           onClick={onClose}
-          className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-ink-950 transition hover:bg-white"
+          className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-ink-950 transition hover:opacity-90"
         >
           Done
         </button>

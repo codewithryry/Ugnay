@@ -136,3 +136,48 @@ export interface UserSettings {
   created_at: string;
   updated_at: string;
 }
+
+/** One step of a workflow: a prompt applied to the previous step's output. */
+export interface WorkflowStep {
+  title: string;
+  prompt: string;
+}
+
+/** A reusable chain of prompts, e.g. summarise -> analyse -> report. */
+export interface Workflow {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string;
+  steps: WorkflowStep[];
+  /** Model this workflow prefers; null means the account default. */
+  provider: string | null;
+  model: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** An uploaded knowledge file. Mirrors public.files. */
+export interface KnowledgeFile {
+  id: string;
+  user_id: string;
+  project_id: string | null;
+  chat_id: string | null;
+  bucket: string;
+  storage_path: string;
+  name: string;
+  mime_type: string;
+  size_bytes: number;
+  extracted_text: string | null;
+  /** Set once the file's passages are embedded and searchable. */
+  indexed_at: string | null;
+  /** Why the text could not be indexed, when that is the case. */
+  index_error: string | null;
+  /** Passages actually embedded. Null on a file that was never indexed. */
+  chunk_count: number | null;
+  /** Passages the whole text would produce; more than chunk_count means partial. */
+  total_chunks: number | null;
+  /** Embedding model its passages were written with; null predates the column. */
+  embedding_model: string | null;
+  created_at: string;
+}

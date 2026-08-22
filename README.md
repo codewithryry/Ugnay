@@ -30,7 +30,7 @@ and OpenRouter.
    | --- | --- | --- | --- |
    | `NEXT_PUBLIC_SUPABASE_URL` | browser + server | yes | Supabase project URL |
    | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | browser + server | yes | Supabase anon/publishable key |
-   | `OPENROUTER_API_KEY` | **server only** | yes | OpenRouter credentials — also powers embeddings, text-to-speech and dictation clean-up |
+   | `OPENROUTER_API_KEY` | **server only** | yes | OpenRouter credentials — also powers text-to-speech and dictation clean-up |
    | `OPENROUTER_SITE_URL` | server only | no | Sent as `HTTP-Referer` to OpenRouter |
    | `OPENROUTER_APP_NAME` | server only | no | Sent as `X-Title` to OpenRouter |
    | `GROQ_API_KEY` | server only | no | Enables the Groq provider |
@@ -143,7 +143,7 @@ Presets fill in the global field.
 
 With **Settings → Data Controls → personalise with history** on, each turn is matched against the
 account's own earlier messages by vector similarity (`message_embeddings`, 1,024-dimension
-embeddings via OpenRouter, `match_user_messages` scoped by `auth.uid()`), falling back to a digest of
+embeddings via Cohere, `match_user_messages` scoped by `auth.uid()`), falling back to a digest of
 recent conversation titles. It is off by default.
 
 ### Sidebar and navigation
@@ -184,7 +184,7 @@ app/
 components/                  Sidebar, ChatWindow, MessageList, Composer, ModelSelector,
                              WorkspacePanel, SettingsPanel, AccountMenu, SearchOverlay, …
 lib/providers/               Unified provider interface + OpenRouter, Groq, Gemini, Cohere, Puter,
-                             plus embeddings and speech
+                             plus speech
 lib/supabase/                Browser, server and middleware Supabase clients
 lib/prompt.ts                System-prompt composition and the title pass
 lib/help.ts                  FAQ and release-notes content
@@ -199,39 +199,3 @@ Row Level Security is enabled on every table and each policy is scoped to `auth.
 be attached to someone else's conversation. All browser reads and writes go through the
 authenticated Supabase client; provider keys are only ever read server-side, and `/api/models`
 returns booleans and model ids, never a key.
-
-## Release notes
-
-The user-facing list lives in [`lib/help.ts`](lib/help.ts) and renders at `/release-notes`.
-
-### 0.4.0 — current
-
-**Highlights**
-
-- Workspaces: named folders with their own instructions, applied to every conversation inside them.
-- Workspace panel beside the conversation for those instructions and the workspace name.
-- Feedback, FAQ and Release Notes are real pages, linked from the account menu under Help.
-
-**Improvements**
-
-- Conversation titles are summarised from the first exchange instead of copying the opening line.
-- Explicitly chosen models no longer fall back silently; the turn stops with a **Change model**
-  action. Auto still switches to a working model.
-- Sidebar rebuilt: fixed navigation, Projects and History sections, and a properly sized icon rail
-  when collapsed.
-- Browser tab shows the conversation you are reading (`<title> | Ugnay`).
-
-**Fixes**
-
-- Opening a conversation is reflected in the route, so a refresh reopens that conversation and New
-  Chat no longer jumps to the first chat in history.
-- Conversations created inside a workspace stay listed under it after a reload.
-- "More models" in the picker is no longer clipped by the menu's own scroll container.
-
-**Known limitations**
-
-- Paid plans on `/upgrade` have no checkout; every account is on Free.
-- Image, Automations, Skills and Connectors, Community, Shared Links and workspace sharing are
-  listed in the UI but not implemented, and are marked accordingly.
-- Personalisation with history needs the `vector` extension and the `match_user_messages` function
-  from `schema.sql`; without them the app falls back to a titles digest.

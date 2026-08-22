@@ -57,7 +57,7 @@ export default function PricingPlans() {
           >
             {option === "monthly" ? "Monthly" : "Yearly"}
             {option === "yearly" && (
-              <span className="ml-2 rounded bg-emerald-950/60 px-1.5 py-0.5 text-[10px] text-emerald-300">
+              <span className="ml-2 rounded bg-success-soft px-1.5 py-0.5 text-[10px] font-medium text-success">
                 Save {Math.round(YEARLY_DISCOUNT * 100)}%
               </span>
             )}

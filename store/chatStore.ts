@@ -53,8 +53,20 @@ interface ChatState {
   showThinking: boolean;
   /** Let the provider search the web for the next reply. */
   webSearch: boolean;
+  /**
+   * Knowledge mode: answer the next reply from the files this account uploaded.
+   * Off by default, so an ordinary question is answered from the normal context
+   * and never from an unrelated document.
+   */
+  useKnowledge: boolean;
   /** Live reasoning text per chat. Streamed only — never persisted. */
   reasoningByChat: Record<string, string>;
+  /**
+   * Knowledge files the current answer was grounded in, per chat. Streamed
+   * only, like the reasoning above: it describes one turn's retrieval, so it is
+   * cleared when the next turn starts and is gone after a reload.
+   */
+  knowledgeSourcesByChat: Record<string, string[]>;
   /** Thumbs rating per assistant message id. */
   feedbackByMessage: Record<string, "up" | "down">;
 
@@ -111,6 +123,7 @@ interface ChatState {
   resendMessage: (messageId: string, content: string) => Promise<void>;
   setShowThinking: (on: boolean) => void;
   setWebSearch: (on: boolean) => void;
+  setUseKnowledge: (on: boolean) => void;
   setError: (error: string | null) => void;
   openModelPicker: () => void;
   openArtifact: (language: string, code: string) => void;
@@ -185,7 +198,7 @@ async function runSend(
   get: () => ChatState,
 ) {
   const supabase = createClient();
-  const { userId, provider, model, thinking, webSearch } = get();
+  const { userId, provider, model, thinking, webSearch, useKnowledge } = get();
   if (!userId) return;
 
   set({ error: null, errorAction: null });
@@ -251,6 +264,7 @@ async function runSend(
     streaming: true,
     streamingChatId: id,
     reasoningByChat: { ...s.reasoningByChat, [id]: "" },
+    knowledgeSourcesByChat: { ...s.knowledgeSourcesByChat, [id]: [] },
     messagesByChat: {
       ...s.messagesByChat,
       [id]: [...(s.messagesByChat[id] ?? []), optimisticUser, optimisticAssistant],
@@ -293,8 +307,17 @@ async function runSend(
                 .map((m) => ({ role: m.role, content: m.content })),
               thinking,
               webSearch,
+              knowledge: useKnowledge,
             }
-          : { chatId: id, content: text, provider, model, thinking, webSearch },
+          : {
+              chatId: id,
+              content: text,
+              provider,
+              model,
+              thinking,
+              webSearch,
+              knowledge: useKnowledge,
+            },
       ),
       signal: abortController.signal,
     });
@@ -337,6 +360,12 @@ async function runSend(
 
         if (event.type === "delta") appendDelta(event.text);
         else if (event.type === "reasoning") appendReasoning(event.text);
+        else if (event.type === "sources" && Array.isArray(event.sources)) {
+          const sources = event.sources as string[];
+          set((s) => ({
+            knowledgeSourcesByChat: { ...s.knowledgeSourcesByChat, [id]: sources },
+          }));
+        }
         else if (event.type === "error") {
           streamError = event.error;
           streamErrorAction = event.action === "change-model" ? "change-model" : null;
@@ -399,7 +428,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
   thinking: null,
   showThinking: true,
   webSearch: false,
+  useKnowledge: false,
   reasoningByChat: {},
+  knowledgeSourcesByChat: {},
   feedbackByMessage: {},
   hydrated: false,
   loadingMessages: false,
@@ -871,6 +902,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setWebSearch(on) {
     set({ webSearch: on });
+  },
+
+  setUseKnowledge(on) {
+    set({ useKnowledge: on });
   },
 
   /**

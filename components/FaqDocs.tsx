@@ -2,14 +2,20 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, MessageSquare, Search, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Info, MessageSquare, Search, Sparkles, X } from "lucide-react";
 import { FAQ_SECTIONS } from "@/lib/help";
 import { cn } from "@/lib/utils";
+import { useHasSession } from "./useHasSession";
 
-/** Other Help destinations, so the rail works like a real docs nav. */
+/**
+ * Other Help destinations, so the rail works like a real docs nav. Release
+ * notes read without a session, like this page; sending feedback needs an
+ * account, so that row is only offered to a visitor who has one.
+ */
 const RELATED = [
-  { href: "/release-notes", label: "Release notes", icon: Sparkles },
-  { href: "/feedback", label: "Send feedback", icon: MessageSquare },
+  { href: "/about", label: "About Ugnay", icon: Info, needsAccount: false },
+  { href: "/release-notes", label: "Release notes", icon: Sparkles, needsAccount: false },
+  { href: "/feedback", label: "Send feedback", icon: MessageSquare, needsAccount: true },
 ];
 
 /**
@@ -20,6 +26,7 @@ const RELATED = [
 export default function FaqDocs() {
   const [query, setQuery] = useState("");
   const [activeId, setActiveId] = useState(FAQ_SECTIONS[0].items[0].id);
+  const signedIn = useHasSession() === true;
 
   // Filtering narrows both the page and the rails, so a search never leaves a
   // link pointing at a heading that is no longer rendered.
@@ -65,7 +72,7 @@ export default function FaqDocs() {
 
   return (
     <main className="min-h-[100dvh] bg-ink-950">
-      <header className="sticky top-0 z-30 border-b border-ink-800 bg-ink-950/85 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-ink-800 bg-ink-950/85">
         <div className="mx-auto flex w-full max-w-7xl items-center gap-3 px-4 py-3 sm:px-6">
           <Link
             href="/"
@@ -139,7 +146,7 @@ export default function FaqDocs() {
                 More help
               </p>
               <ul className="space-y-0.5">
-                {RELATED.map(({ href, label, icon: Icon }) => (
+                {RELATED.filter((item) => signedIn || !item.needsAccount).map(({ href, label, icon: Icon }) => (
                   <li key={href}>
                     <Link
                       href={href}
@@ -162,19 +169,33 @@ export default function FaqDocs() {
             Frequently asked questions
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-relaxed text-neutral-400">
-            The short answers to what people ask most about Ugnay. Anything missing?{" "}
-            <Link href="/feedback" className="text-neutral-200 underline underline-offset-4 hover:text-neutral-100">
-              Send it from the Feedback page
-            </Link>
-            .
+            The short answers to what people ask most about Ugnay.
+            {signedIn ? (
+              <>
+                {" "}
+                Anything missing?{" "}
+                <Link
+                  href="/feedback"
+                  className="text-neutral-200 underline underline-offset-4 hover:text-neutral-100"
+                >
+                  Send it from the Feedback page
+                </Link>
+                .
+              </>
+            ) : null}
           </p>
 
           {matchCount === 0 ? (
             <p className="mt-12 rounded-xl border border-ink-800 bg-ink-900 px-4 py-8 text-center text-sm text-neutral-500">
-              Nothing matches “{query.trim()}”. Try another word, or send the question from the{" "}
-              <Link href="/feedback" className="text-neutral-300 underline underline-offset-4">
-                Feedback page
-              </Link>
+              Nothing matches “{query.trim()}”. Try another word
+              {signedIn ? (
+                <>
+                  , or send the question from the{" "}
+                  <Link href="/feedback" className="text-neutral-300 underline underline-offset-4">
+                    Feedback page
+                  </Link>
+                </>
+              ) : null}
               .
             </p>
           ) : (

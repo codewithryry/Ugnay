@@ -34,12 +34,17 @@ export default function MessageActions({
   shareUrl,
   onRegenerate,
   regenerating = false,
+  provider,
+  model,
 }: {
   messageId: string;
   content: string;
   shareUrl?: string;
   onRegenerate?: () => void;
   regenerating?: boolean;
+  /** Which model produced this reply, as stored on the message row. */
+  provider?: string | null;
+  model?: string | null;
 }) {
   const [copied, setCopied] = useState(false);
   const [speech, setSpeech] = useState<"idle" | "loading" | "playing">("idle");
@@ -56,6 +61,20 @@ export default function MessageActions({
   const [branching, setBranching] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  /**
+   * The model that answered, named the way the picker names it. The row stores
+   * ids; the catalog is what turns them into labels, and an id the catalog no
+   * longer carries (a model that has since been retired) falls back to the id
+   * itself rather than showing nothing.
+   */
+  const catalog = useChatStore((s) => s.catalog);
+  const answeredBy = (() => {
+    if (!model) return null;
+    const entry = catalog.find((p) => p.id === provider);
+    const modelLabel = entry?.models.find((m) => m.id === model)?.label ?? model;
+    return entry ? `${modelLabel} · ${entry.label}` : modelLabel;
+  })();
 
   useEffect(
     () => () => {
@@ -255,8 +274,23 @@ export default function MessageActions({
             <div
               role="menu"
               aria-label="Message options"
-              className="absolute bottom-[calc(100%+0.35rem)] left-0 z-20 w-[min(12rem,calc(100vw-2rem))] rounded-xl border border-ink-700 bg-ink-850 p-1 shadow-2xl animate-fade-in"
+              className="absolute bottom-[calc(100%+0.35rem)] left-0 z-20 w-[min(14rem,calc(100vw-2rem))] rounded-xl border border-ink-700 bg-ink-850 p-1 shadow-2xl animate-fade-in"
             >
+              {/* Which model produced this reply. Read-only, so it is a header
+                * rather than a menu item. */}
+              {answeredBy && (
+                <>
+                  <div className="px-2.5 pb-1.5 pt-1.5">
+                    <p className="mt-1 break-words text-sm leading-snug text-neutral-200">
+                      {answeredBy}
+                    </p>
+                  </div>
+                  {(shareUrl || onRegenerate) && (
+                    <div className="my-1 h-px bg-ink-700" role="none" />
+                  )}
+                </>
+              )}
+
               {shareUrl && (
                 <button
                   role="menuitem"

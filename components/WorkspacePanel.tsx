@@ -103,19 +103,13 @@ export default function WorkspacePanel() {
         </section>
       </div>
 
+      {/* Closing is the header X; this bar is only for saving. */}
       <div className="flex items-center justify-end gap-2 border-t border-ink-800 px-4 py-3">
-        <button
-          type="button"
-          onClick={() => setPanelProject(null)}
-          className="rounded-xl border border-ink-700 px-3 py-2 text-xs text-neutral-300 transition hover:bg-ink-850 hover:text-neutral-100"
-        >
-          Close
-        </button>
         <button
           type="button"
           onClick={() => void save()}
           disabled={saving || !name.trim() || !dirty}
-          className="rounded-xl bg-neutral-100 px-3 py-2 text-xs font-medium text-ink-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-xl bg-neutral-100 px-3.5 py-2 text-sm font-medium text-ink-950 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {saving ? "Saving…" : "Save changes"}
         </button>

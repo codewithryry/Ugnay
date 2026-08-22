@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Copy, Maximize2 } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { useChatStore } from "@/store/chatStore";
 import { isArtifact } from "@/lib/artifacts";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { resolveTheme } from "@/lib/theme";
+import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 export default function CodeBlock({
   language,
@@ -19,6 +20,20 @@ export default function CodeBlock({
   const openArtifact = useChatStore((s) => s.openArtifact);
   const canOpenInCanvas = isArtifact(language, code);
 
+  // The highlighter ships fixed palettes, so the theme is resolved here the
+  // same way ChatApp resolves it for <html>. Dark on the server render, which
+  // is what the layout's default attribute already assumes.
+  const themeChoice = useChatStore((s) => s.settings?.theme ?? "dark");
+  const [light, setLight] = useState(false);
+  useEffect(() => {
+    const update = () => setLight(resolveTheme(themeChoice) === "light");
+    update();
+    if (themeChoice !== "system") return;
+    const media = window.matchMedia("(prefers-color-scheme: light)");
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [themeChoice]);
+
   async function copy() {
     try {
       await navigator.clipboard.writeText(code);
@@ -30,7 +45,7 @@ export default function CodeBlock({
   }
 
   return (
-    <div className="group relative w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-ink-700 bg-[#0d0d10]">
+    <div className="group relative w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-ink-700 bg-ink-900">
       <div className="flex items-center justify-between border-b border-ink-800 px-3 py-1.5">
         <span className="font-mono text-[11px] uppercase tracking-wide text-neutral-500">
           {language || "text"}
@@ -66,7 +81,7 @@ export default function CodeBlock({
 
       <SyntaxHighlighter
         language={language || "text"}
-        style={oneDark}
+        style={light ? oneLight : oneDark}
         PreTag="div"
         wrapLongLines={wrapLines}
         customStyle={{

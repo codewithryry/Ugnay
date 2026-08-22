@@ -88,7 +88,7 @@ export default function Modal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
-      <div className="absolute inset-0 bg-black/70" aria-hidden onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60" aria-hidden onClick={onClose} />
       <div
         ref={panelRef}
         role="dialog"
@@ -99,7 +99,7 @@ export default function Modal({
         className={cn(
           // dvh, not vh: on mobile browsers vh includes the chrome, which
           // would push the footer off screen. pb-safe clears the home indicator.
-          "relative flex max-h-[92dvh] w-full flex-col overflow-hidden overscroll-contain rounded-t-2xl border border-ink-700 bg-ink-900 pb-safe shadow-2xl sm:max-h-[92vh] sm:rounded-2xl sm:pb-0",
+          "animate-fade-in relative flex max-h-[92dvh] w-full flex-col overflow-hidden overscroll-contain rounded-t-2xl border border-ink-700 bg-ink-900 pb-safe shadow-2xl sm:max-h-[92vh] sm:rounded-2xl sm:pb-0",
           panelClassName,
         )}
       >
@@ -120,7 +120,7 @@ export default function Modal({
               type="button"
               onClick={onClose}
               aria-label="Close dialog"
-              className="shrink-0 rounded-lg p-2 sm:p-1.5 text-neutral-400 hover:bg-ink-800 hover:text-neutral-100"
+              className="shrink-0 rounded-lg p-2 text-neutral-400 transition hover:bg-ink-800 hover:text-neutral-100 sm:p-1.5"
             >
               <X className="h-4 w-4" aria-hidden />
             </button>

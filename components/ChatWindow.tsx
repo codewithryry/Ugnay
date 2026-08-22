@@ -7,7 +7,7 @@ import type { CurrentUser } from "./ChatApp";
 import ChatHeaderMenu from "./ChatHeaderMenu";
 import Composer from "./Composer";
 import MessageList from "./MessageList";
-import { cn } from "@/lib/utils";
+import { cn, DEFAULT_CHAT_TITLE } from "@/lib/utils";
 import { FALLBACK_GREETING, GREETING_STORAGE_KEY, pickGreeting, type Greeting } from "@/lib/greetings";
 import { useChatStore } from "@/store/chatStore";
 import { useIsCompact } from "./useIsCompact";
@@ -73,7 +73,12 @@ export default function ChatWindow({
           <PanelLeft className="h-4 w-4" aria-hidden />
         </button>
 
-        <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1 md:gap-1.5">
+        {/* The open conversation, so the bar is not half empty. */}
+        <h2 className="min-w-0 flex-1 truncate px-1 text-sm font-medium text-neutral-300 md:px-2">
+          {!isEmpty && activeChat && activeChat.title !== DEFAULT_CHAT_TITLE ? activeChat.title : ""}
+        </h2>
+
+        <div className="flex min-w-0 shrink-0 items-center gap-1 md:gap-1.5">
           <Link
             href="/upgrade"
             className="shrink-0 rounded-full border border-ink-700 px-2.5 py-1.5 text-xs text-neutral-200 transition hover:bg-ink-850 md:px-3"
@@ -102,7 +107,7 @@ export default function ChatWindow({
       {offline && (
         <div
           role="status"
-          className="flex items-center justify-center gap-2 bg-amber-950/60 px-4 py-2 text-xs text-amber-300"
+          className="flex items-center justify-center gap-2 border-b border-warning/20 bg-warning-soft px-4 py-2 text-xs text-warning"
         >
           <WifiOff className="h-3.5 w-3.5" aria-hidden />
           You are offline. Messages will fail until the connection is back.
@@ -112,7 +117,7 @@ export default function ChatWindow({
       {error && (
         <div
           role="alert"
-          className="mx-auto mt-3 flex w-[calc(100%-2rem)] max-w-3xl items-start gap-2 rounded-xl border border-red-900/60 bg-red-950/40 px-3 py-2.5 text-xs text-red-200"
+          className="animate-fade-in mx-auto mt-3 flex w-[calc(100%-2rem)] max-w-3xl items-start gap-2 rounded-xl border border-danger/25 bg-danger-soft px-3 py-2.5 text-xs text-danger"
         >
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
           <span className="flex-1">{error}</span>
@@ -123,7 +128,7 @@ export default function ChatWindow({
                 setError(null);
                 openModelPicker();
               }}
-              className="shrink-0 rounded-lg border border-red-900/60 px-2 py-1 text-[11px] text-red-100 transition hover:bg-red-950/60"
+              className="shrink-0 rounded-lg border border-danger/30 px-2 py-1 text-[11px] font-medium text-danger transition hover:bg-danger/10"
             >
               Change model
             </button>
@@ -132,7 +137,7 @@ export default function ChatWindow({
             type="button"
             onClick={() => setError(null)}
             aria-label="Dismiss error"
-            className="rounded p-0.5 text-red-300 hover:text-red-100"
+            className="rounded p-0.5 text-danger/70 transition hover:text-danger"
           >
             <X className="h-3.5 w-3.5" aria-hidden />
           </button>

@@ -83,7 +83,7 @@ export default function FeedbackModal({
       <button
         type="button"
         onClick={onClose}
-        className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-ink-950 transition hover:bg-white"
+        className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-ink-950 transition hover:opacity-90"
       >
         Done
       </button>
@@ -93,7 +93,7 @@ export default function FeedbackModal({
       type="button"
       onClick={send}
       disabled={sending || !message.trim()}
-      className="rounded-xl bg-neutral-100 px-5 py-2 text-sm font-medium text-ink-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+      className="rounded-xl bg-neutral-100 px-5 py-2 text-sm font-medium text-ink-950 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
     >
       {sending ? "Sending…" : "Send"}
     </button>
@@ -104,7 +104,7 @@ export default function FeedbackModal({
       {sent ? (
         <div className="py-6">
           <p className="flex items-center gap-2 text-sm text-neutral-100">
-            <Check className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden />
+            <Check className="h-4 w-4 shrink-0 text-success" aria-hidden />
             Thanks — your feedback was sent.
           </p>
           <p className="mt-2 text-xs leading-relaxed text-neutral-500">

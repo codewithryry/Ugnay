@@ -183,7 +183,7 @@ export default function PromptLibraryModal({
         type="button"
         onClick={save}
         disabled={saving || !draft?.title.trim() || !draft?.body.trim()}
-        className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-ink-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-ink-950 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {saving ? "Saving…" : draft?.id ? "Save changes" : "Add prompt"}
       </button>
@@ -192,7 +192,7 @@ export default function PromptLibraryModal({
     <button
       type="button"
       onClick={() => setDraft({ ...EMPTY_DRAFT })}
-      className="flex items-center gap-1.5 rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-ink-950 transition hover:bg-white"
+      className="flex items-center gap-1.5 rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-ink-950 transition hover:opacity-90"
     >
       <Plus className="h-3.5 w-3.5" aria-hidden />
       New prompt

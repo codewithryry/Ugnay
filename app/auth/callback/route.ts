@@ -23,6 +23,14 @@ function hostOf(value: string | null | undefined) {
  * it is one of the deployment's own known hosts.
  */
 function publicOrigin(request: NextRequest) {
+  // A local dev session always stays local. Without this, setting
+  // NEXT_PUBLIC_SITE_URL to the deployed origin (which production needs) would
+  // send every sign-in on localhost off to the live site mid-test.
+  const requestHost = request.nextUrl.hostname;
+  if (requestHost === "localhost" || requestHost === "127.0.0.1" || requestHost === "[::1]") {
+    return request.nextUrl.origin;
+  }
+
   const configured = process.env.NEXT_PUBLIC_SITE_URL;
   if (configured && hostOf(configured)) return new URL(configured).origin;
 

@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Blocks,
+  Archive,
+  ArchiveRestore,
   Check,
   ChevronDown,
   ChevronsLeft,
@@ -12,20 +13,19 @@ import {
   FolderPlus,
   History as HistoryIcon,
   Image as ImageIcon,
+  Library,
   Link2,
   MoreHorizontal,
   Pencil,
-  Plus,
-  Archive,
-  ArchiveRestore,
   Pin,
+  Plus,
   Search,
   SlidersHorizontal,
   SquarePen,
   Trash2,
+  type LucideIcon,
   Workflow,
   X,
-  type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -63,7 +63,7 @@ export default function Sidebar({
   onOpenUsage: () => void;
   onOpenCompare: () => void;
   /** Highlights the row for the surface currently shown. */
-  activeNav?: "chat" | "search" | "release-notes";
+  activeNav?: "chat" | "search" | "release-notes" | "workflows" | "knowledge";
 }) {
   const router = useRouter();
   const chats = useChatStore((s) => s.chats);
@@ -144,10 +144,11 @@ export default function Sidebar({
             collapsed && "md:h-10 md:w-10 md:justify-center md:px-0",
           )}
         >
-          {/* Expanded shows the wordmark alone; the mark returns once collapsed. */}
+          {/* Expanded shows the wordmark alone; the mark returns once collapsed,
+            * where it is the only thing left to carry the name. */}
           <Image
             src="/logo/logo-192.png"
-            alt=""
+            alt="Ugnay"
             width={28}
             height={28}
             className={cn(
@@ -157,7 +158,7 @@ export default function Sidebar({
           />
           <span
             className={cn(
-              "font-display text-xl font-semibold tracking-tight text-neutral-100",
+              "font-display text-2xl font-semibold tracking-tight text-neutral-100",
               collapsed && "md:hidden",
             )}
           >
@@ -214,8 +215,17 @@ export default function Sidebar({
         {/* No destination yet: rendered like the other pending entries, and a
          * real row as soon as one exists. */}
         <NavRow icon={ImageIcon} label="Image" collapsed={collapsed} soon />
-        <NavRow icon={Workflow} label="Automations" collapsed={collapsed} soon />
-        <NavRow icon={Blocks} label="Skills and Connectors" collapsed={collapsed} soon />
+        {/* Built but not finished: the page and its API are in place, and the
+          * row becomes a link again by putting `href` back. Parked while
+          * Knowledge is the thing being worked on. */}
+        <NavRow icon={Workflow} label="Workflows" collapsed={collapsed} soon />
+        <NavRow
+          icon={Library}
+          label="Knowledge"
+          href="/knowledge"
+          collapsed={collapsed}
+          active={activeNav === "knowledge"}
+        />
       </nav>
 
       <div className={cn("shrink-0 px-2 pb-1", collapsed && "md:hidden")}>
@@ -577,7 +587,7 @@ function ProjectRow({
           onClick={onNewChat}
           aria-label={`New chat in ${name}`}
           title={`New chat in ${name}`}
-          className="shrink-0 rounded-md p-1 text-neutral-500 transition hover:text-neutral-100"
+          className="shrink-0 rounded-md p-1.5 text-neutral-500 transition hover:bg-ink-700 hover:text-neutral-100"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden />
         </button>
@@ -589,7 +599,7 @@ function ProjectRow({
             aria-label={`${name} options`}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
-            className="rounded-md p-1 text-neutral-500 transition hover:text-neutral-100"
+            className="rounded-md p-1.5 text-neutral-500 transition hover:bg-ink-700 hover:text-neutral-100"
           >
             <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
           </button>
@@ -644,7 +654,7 @@ function ProjectRow({
                     setMenuOpen(false);
                     void deleteProject(id);
                   }}
-                  className={cn(menuItemClass, "text-red-300 hover:bg-red-950/40 hover:text-red-200")}
+                  className={cn(menuItemClass, "text-danger hover:bg-danger/10 hover:text-danger")}
                 >
                   <Trash2 className="h-3.5 w-3.5" aria-hidden />
                   Delete
@@ -658,7 +668,7 @@ function ProjectRow({
       {/* Its conversations stay listed under it, so they are reachable after a
        * reload without having to open the workspace first. */}
       {expanded && projectChats.length > 0 && (
-        <ul className="mt-0.5 space-y-0.5 border-l border-ink-800 pl-2">
+        <ul className="animate-fade-in ml-3.5 mt-1 space-y-0.5 border-l border-ink-800 pl-2">
           {projectChats.map((chat) => (
             <ChatRow
               key={chat.id}
@@ -698,7 +708,7 @@ function WorkspaceNameField({
   }
 
   return (
-    <div className="flex items-center gap-1 rounded-lg bg-ink-800 px-2 py-1">
+    <div className="animate-fade-in flex items-center gap-1.5 rounded-xl border border-ink-700 bg-ink-900 px-2 py-1 transition focus-within:border-ink-600">
       <FolderClosed className="h-4 w-4 shrink-0 text-neutral-500" aria-hidden />
       <input
         ref={inputRef}
@@ -712,14 +722,16 @@ function WorkspaceNameField({
           if (e.key === "Enter") commit();
           if (e.key === "Escape") onCancel();
         }}
-        className="w-full min-w-0 bg-transparent py-1 text-base text-neutral-100 placeholder:text-neutral-600 outline-none sm:text-sm"
+        /* field-seamless: the shell above renders the focus state, so the
+           global focus ring does not draw a rectangle inside it. */
+        className="field-seamless w-full min-w-0 py-1 text-base text-neutral-100 placeholder:text-neutral-600 sm:text-sm"
       />
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()}
         onClick={commit}
         aria-label="Save workspace name"
-        className="rounded p-1 text-neutral-400 hover:text-neutral-100"
+        className="shrink-0 rounded-full p-1.5 text-neutral-400 transition hover:bg-ink-850 hover:text-neutral-100"
       >
         <Check className="h-3.5 w-3.5" aria-hidden />
       </button>
@@ -811,7 +823,7 @@ function ChatRow({
   if (editing) {
     return (
       <li>
-        <div className="flex items-center gap-1 rounded-lg bg-ink-800 px-2 py-1">
+        <div className="animate-fade-in flex items-center gap-1.5 rounded-xl border border-ink-700 bg-ink-900 px-2 py-1 transition focus-within:border-ink-600">
           <input
             ref={inputRef}
             value={draft}
@@ -825,14 +837,16 @@ function ChatRow({
                 setEditing(false);
               }
             }}
-            className="w-full min-w-0 bg-transparent py-1 text-base text-neutral-100 outline-none sm:text-sm"
+            /* field-seamless: the shell above renders the focus state, so the
+               global focus ring does not draw a rectangle inside it. */
+            className="field-seamless w-full min-w-0 py-1 text-base text-neutral-100 sm:text-sm"
           />
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={commit}
             aria-label="Save title"
-            className="rounded p-1 text-neutral-400 hover:text-neutral-100"
+            className="shrink-0 rounded-full p-1.5 text-neutral-400 transition hover:bg-ink-850 hover:text-neutral-100"
           >
             <Check className="h-3.5 w-3.5" aria-hidden />
           </button>
@@ -842,22 +856,31 @@ function ChatRow({
   }
 
   return (
-    <li className="group relative">
+    <li
+      className={cn(
+        "group flex items-center rounded-lg pr-1 transition",
+        active ? "bg-ink-800" : "hover:bg-ink-850",
+      )}
+    >
       <button
         type="button"
         onClick={onSelect}
         aria-current={active ? "page" : undefined}
+        title={title}
         className={cn(
-          "flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition",
-          active ? "bg-ink-800 text-neutral-100" : "text-neutral-400 hover:bg-ink-850 hover:text-neutral-200",
+          "flex min-w-0 flex-1 items-center rounded-lg px-2.5 py-2 text-left text-sm",
+          active ? "text-neutral-100" : "text-neutral-400 group-hover:text-neutral-200",
         )}
       >
-        <span className="truncate pr-24">{title}</span>
+        <span className="min-w-0 flex-1 truncate">{title}</span>
       </button>
 
       <div
         className={cn(
-          "absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100",
+          // In flow, so the buttons take their own space rather than sitting on
+          // top of the title. They keep it even while hidden, which is what
+          // holds every row's truncation point in the same place.
+          "flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100",
           // No hover on touch: show them permanently there instead.
           "touch-visible",
           active && "opacity-100",
@@ -868,7 +891,7 @@ function ChatRow({
             <button
               type="button"
               onClick={() => void deleteChat(id)}
-              className="rounded p-2 text-red-400 hover:bg-ink-700"
+              className="rounded-md p-1.5 text-danger hover:bg-ink-700"
               aria-label={`Confirm delete ${title}`}
             >
               <Check className="h-3.5 w-3.5" aria-hidden />
@@ -876,7 +899,7 @@ function ChatRow({
             <button
               type="button"
               onClick={() => setConfirmDelete(false)}
-              className="rounded p-2 text-neutral-400 hover:bg-ink-700"
+              className="rounded-md p-1.5 text-neutral-400 hover:bg-ink-700"
               aria-label="Cancel delete"
             >
               <X className="h-3.5 w-3.5" aria-hidden />
@@ -889,7 +912,7 @@ function ChatRow({
               onClick={() => void setChatPinned(id, !pinned)}
               aria-pressed={pinned}
               className={cn(
-                "rounded p-1.5 hover:bg-ink-700",
+                "rounded-md p-1.5 hover:bg-ink-700",
                 pinned ? "text-neutral-200" : "text-neutral-500 hover:text-neutral-200",
               )}
               aria-label={pinned ? `Unpin ${title}` : `Pin ${title}`}
@@ -899,7 +922,7 @@ function ChatRow({
             <button
               type="button"
               onClick={() => void setChatArchived(id, !archived)}
-              className="rounded p-1.5 text-neutral-500 hover:bg-ink-700 hover:text-neutral-200"
+              className="rounded-md p-1.5 text-neutral-500 hover:bg-ink-700 hover:text-neutral-200"
               aria-label={archived ? `Unarchive ${title}` : `Archive ${title}`}
             >
               {archived ? (
@@ -911,7 +934,7 @@ function ChatRow({
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="rounded p-1.5 text-neutral-500 hover:bg-ink-700 hover:text-neutral-200"
+              className="rounded-md p-1.5 text-neutral-500 hover:bg-ink-700 hover:text-neutral-200"
               aria-label={`Rename ${title}`}
             >
               <Pencil className="h-3.5 w-3.5" aria-hidden />
@@ -919,7 +942,7 @@ function ChatRow({
             <button
               type="button"
               onClick={() => setConfirmDelete(true)}
-              className="rounded p-1.5 text-neutral-500 hover:bg-ink-700 hover:text-red-400"
+              className="rounded-md p-1.5 text-neutral-500 hover:bg-ink-700 hover:text-danger"
               aria-label={`Delete ${title}`}
             >
               <Trash2 className="h-3.5 w-3.5" aria-hidden />

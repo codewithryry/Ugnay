@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Loader2, PanelLeft, Square, X } from "lucide-react";
+import { Check, Columns3, Loader2, PanelLeft, Square, X } from "lucide-react";
 import { useChatStore } from "@/store/chatStore";
 import { cn } from "@/lib/utils";
 
@@ -51,9 +51,30 @@ export default function ModelCompareView({ onClose }: { onClose: () => void }) {
             provider: entry.id,
             model: model.id,
             label: `${model.label} · ${entry.label}`,
+            /** The model on its own; the provider is the group heading. */
+            shortLabel: model.label,
+            providerLabel: entry.label,
           })),
         ),
     [catalog],
+  );
+
+  /**
+   * The same options grouped by provider, so the chips read like the model
+   * picker does — a provider heading with its models under it — instead of one
+   * long row that repeats the provider name on every chip.
+   */
+  const grouped = useMemo(
+    () =>
+      catalog
+        .filter((entry) => entry.configured)
+        .map((entry) => ({
+          id: entry.id,
+          label: entry.label,
+          models: options.filter((option) => option.provider === entry.id),
+        }))
+        .filter((group) => group.models.length > 0),
+    [catalog, options],
   );
 
   const [selected, setSelected] = useState<string[]>(() => {
@@ -205,115 +226,147 @@ export default function ModelCompareView({ onClose }: { onClose: () => void }) {
           <PanelLeft className="h-4 w-4" aria-hidden />
         </button>
 
-        <h1 className="min-w-0 truncate px-1 text-sm font-medium text-neutral-200">
-          Compare models
-        </h1>
-
+        {/* The page names itself in the body, like every other surface, so the
+          * bar carries only the controls. */}
         <button
           type="button"
           onClick={handleClose}
           aria-label="Close compare models"
-          className="ml-auto shrink-0 rounded-lg p-2.5 text-neutral-400 hover:bg-ink-850 hover:text-neutral-100"
+          className="ml-auto shrink-0 rounded-lg p-2.5 text-neutral-400 transition hover:bg-ink-850 hover:text-neutral-100"
         >
           <X className="h-4 w-4" aria-hidden />
         </button>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-5xl px-4 pb-24 pt-4 sm:px-6">
-          <p className="text-xs text-neutral-500">
-            Send one prompt to {MIN_MODELS}–{MAX_MODELS} models at once. Nothing here is saved to
-            your history.
+        <div className="mx-auto w-full max-w-4xl px-5 pb-24 pt-6 sm:px-8 md:pt-10">
+          <h1 className="font-display text-3xl font-semibold tracking-tight text-neutral-100 sm:text-4xl">
+            Compare models
+          </h1>
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-neutral-400">
+            Send one prompt to {MIN_MODELS}&ndash;{MAX_MODELS} models at once and read the replies
+            side by side. Nothing here is saved to your history.
           </p>
 
           {options.length === 0 ? (
-            <p className="py-16 text-center text-sm text-neutral-500">
-              No models are available right now.
-            </p>
+            <div className="mt-10 rounded-2xl border border-ink-800 bg-ink-900 px-5 py-10 text-center">
+              <Columns3 className="mx-auto h-5 w-5 text-neutral-600" aria-hidden />
+              <p className="mt-3 text-sm text-neutral-400">No models are available right now.</p>
+              <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-neutral-600">
+                A provider needs its API key set on the server before it can appear here.
+              </p>
+            </div>
           ) : (
             <>
-              <p className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
-                Models ({selected.length}/{MAX_MODELS})
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {options.map((option) => {
-                  const on = selected.includes(option.key);
-                  return (
-                    <button
-                      key={option.key}
-                      type="button"
-                      onClick={() => toggle(option.key)}
-                      disabled={running || (!on && selected.length >= MAX_MODELS)}
-                      aria-pressed={on}
-                      className={cn(
-                        "rounded-full border px-3 py-1.5 text-xs transition disabled:opacity-40",
-                        on
-                          ? "border-neutral-500 bg-ink-800 text-neutral-100"
-                          : "border-ink-700 text-neutral-400 hover:bg-ink-850 hover:text-neutral-200",
-                      )}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <label
-                htmlFor="compare-prompt"
-                className="mb-1.5 mt-5 block text-xs font-medium text-neutral-400"
-              >
-                Prompt
-              </label>
-              <textarea
-                id="compare-prompt"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                disabled={running}
-                rows={3}
-                placeholder="Ask the same thing of every selected model…"
-                className="w-full resize-y rounded-xl border border-ink-700 bg-ink-950 px-3.5 py-3 text-base leading-6 text-neutral-100 placeholder:text-neutral-600 focus:border-ink-600 disabled:opacity-60 sm:text-sm"
-              />
-
-              <div className="mt-3 flex items-center gap-3">
-                {running ? (
-                  <button
-                    type="button"
-                    onClick={stop}
-                    className="flex items-center gap-2 rounded-xl border border-ink-700 px-4 py-2 text-sm text-neutral-200 transition hover:bg-ink-850"
-                  >
-                    <Square className="h-3.5 w-3.5 fill-current" aria-hidden />
-                    Stop
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => void run()}
-                    disabled={!canRun}
-                    className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-ink-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Run comparison
-                  </button>
-                )}
-                {selected.length < MIN_MODELS && (
-                  <span className="text-[11px] text-neutral-600">
-                    Pick at least {MIN_MODELS} models to compare.
+              {/* ------------------------------------------------- model chips */}
+              <section className="mt-10">
+                <div className="flex items-baseline justify-between gap-3">
+                  <h2 className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+                    Models
+                  </h2>
+                  <span className="shrink-0 text-[11px] tabular-nums text-neutral-600">
+                    {selected.length} of {MAX_MODELS} selected
                   </span>
-                )}
-              </div>
+                </div>
 
-              {columns.length > 0 && (
-                <div
-                  className="mt-6 grid gap-3"
-                  style={{
-                    gridTemplateColumns: `repeat(${Math.min(columns.length, 2)}, minmax(0, 1fr))`,
-                  }}
+                <div className="mt-3 space-y-4">
+                  {grouped.map((group) => (
+                    <div key={group.id}>
+                      <p className="mb-2 text-[11px] uppercase tracking-wide text-neutral-600">
+                        {group.label}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {group.models.map((option) => {
+                          const on = selected.includes(option.key);
+                          return (
+                            <button
+                              key={option.key}
+                              type="button"
+                              onClick={() => toggle(option.key)}
+                              disabled={running || (!on && selected.length >= MAX_MODELS)}
+                              aria-pressed={on}
+                              title={option.label}
+                              className={cn(
+                                // The composer's Thinking / Web search chip, so
+                                // a toggle looks like a toggle everywhere.
+                                "flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs transition disabled:cursor-not-allowed disabled:opacity-40",
+                                on
+                                  ? "border-neutral-400 bg-ink-800 text-neutral-100"
+                                  : "border-ink-700 text-neutral-400 hover:bg-ink-850 hover:text-neutral-200",
+                              )}
+                            >
+                              {on && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />}
+                              {option.shortLabel}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* ------------------------------------------------ prompt shell */}
+              <section className="mt-8">
+                <label
+                  htmlFor="compare-prompt"
+                  className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-neutral-500"
                 >
+                  Prompt
+                </label>
+
+                {/* The composer's own shell, so the input this page is built
+                  * around is the same object it is in the chat. */}
+                <div className="rounded-3xl border border-ink-700 bg-ink-900 p-2 shadow-lg transition focus-within:border-ink-600">
+                  <textarea
+                    id="compare-prompt"
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    disabled={running}
+                    rows={3}
+                    placeholder="Ask the same thing of every selected model…"
+                    className="field-seamless max-h-[200px] w-full resize-none px-2.5 pb-1 pt-2 text-base leading-6 text-neutral-100 placeholder:text-neutral-600 disabled:opacity-60 sm:text-[15px]"
+                  />
+
+                  <div className="flex min-w-0 flex-wrap items-center gap-2 pt-1">
+                    <span className="min-w-0 flex-1 truncate pl-1 text-[11px] text-neutral-600">
+                      {selected.length < MIN_MODELS
+                        ? `Pick at least ${MIN_MODELS} models to compare.`
+                        : `${selected.length} models will answer this.`}
+                    </span>
+
+                    {running ? (
+                      <button
+                        type="button"
+                        onClick={stop}
+                        className="flex shrink-0 items-center gap-2 rounded-full border border-ink-700 px-3.5 py-2 text-sm text-neutral-200 transition hover:bg-ink-850"
+                      >
+                        <Square className="h-3.5 w-3.5 fill-current" aria-hidden />
+                        Stop
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void run()}
+                        disabled={!canRun}
+                        className="shrink-0 rounded-full bg-neutral-100 px-3.5 py-2 text-sm font-medium text-ink-950 transition hover:opacity-90 disabled:cursor-not-allowed disabled:bg-ink-700 disabled:text-neutral-500"
+                      >
+                        Run comparison
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </section>
+
+              {/* ----------------------------------------------------- results */}
+              {columns.length > 0 && (
+                <div className="mt-8 grid gap-3 sm:grid-cols-2">
                   {columns.map((column) => (
                     <section
                       key={column.key}
-                      className="flex min-w-0 flex-col rounded-xl border border-ink-800 bg-ink-950"
+                      className="flex min-w-0 flex-col rounded-xl border border-ink-800 bg-ink-900"
                     >
-                      <header className="flex items-center gap-2 border-b border-ink-800 px-3 py-2">
+                      <header className="flex items-center gap-2 border-b border-ink-800 px-3.5 py-2.5">
                         <span className="min-w-0 flex-1 truncate text-xs font-medium text-neutral-200">
                           {column.label}
                         </span>
@@ -324,15 +377,15 @@ export default function ModelCompareView({ onClose }: { onClose: () => void }) {
                           />
                         )}
                         {column.status === "error" && (
-                          <span className="shrink-0 text-[10px] uppercase tracking-wide text-rose-400">
+                          <span className="shrink-0 text-[10px] uppercase tracking-wide text-danger">
                             Failed
                           </span>
                         )}
                       </header>
 
-                      <div className="max-h-[60vh] min-w-0 overflow-y-auto px-3 py-2.5">
+                      <div className="max-h-[60dvh] min-w-0 overflow-y-auto px-3.5 py-3">
                         {column.status === "error" ? (
-                          <p role="alert" className="text-xs leading-relaxed text-rose-400">
+                          <p role="alert" className="text-xs leading-relaxed text-danger">
                             {column.error}
                           </p>
                         ) : column.text ? (

@@ -1,14 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { FileText, History, Image as ImageIcon, Puzzle } from "lucide-react";
+import { FolderClosed, History, Layers, Library } from "lucide-react";
 
-/** What an account adds, listed beside the call to action. */
+/**
+ * What an account adds, listed beside the call to action.
+ *
+ * Each line is something the app does today, and the icons are the ones the
+ * sidebar already uses for those surfaces, so the promise and the product
+ * match. Nothing pending belongs here.
+ */
 const FEATURES = [
-  { icon: ImageIcon, label: "Make stunning AI images & videos" },
-  { icon: Puzzle, label: "Use Skills & Connectors" },
-  { icon: FileText, label: "Generate files" },
-  { icon: History, label: "Chat history" },
+  { icon: Layers, label: "Multiple AI models" },
+  { icon: History, label: "Saved chat history" },
+  { icon: FolderClosed, label: "Workspaces" },
+  { icon: Library, label: "Chat with your files" },
 ];
 
 /**
@@ -51,7 +57,7 @@ export default function SignupPromptCard({ next = "/" }: { next?: string }) {
         <div className="flex flex-wrap items-center gap-2.5 sm:col-start-1 sm:row-start-2 sm:self-end">
           <Link
             href={`/login?mode=signup&next=${target}`}
-            className="rounded-full bg-neutral-100 px-5 py-2.5 text-sm font-medium text-ink-950 transition hover:bg-white"
+            className="rounded-full bg-neutral-100 px-5 py-2.5 text-sm font-medium text-ink-950 transition hover:opacity-90"
           >
             Sign up for free
           </Link>

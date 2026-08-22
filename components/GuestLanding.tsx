@@ -10,13 +10,16 @@ import { useIsCompact } from "./useIsCompact";
 
 const MAX_HEIGHT = 200;
 
-/**
- * Terms / Privacy have no pages yet, so these read as emphasis rather than
- * links — a dead link is worse than plain text. Swap the spans for <Link>
- * once /terms and /privacy exist.
- */
-function LegalTerm({ children }: { children: React.ReactNode }) {
-  return <span className="text-neutral-500 underline underline-offset-2">{children}</span>;
+/** The two legal pages, styled to read as part of the sentence. */
+function LegalLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link
+      href={href}
+      className="text-neutral-500 underline underline-offset-2 transition hover:text-neutral-300"
+    >
+      {children}
+    </Link>
+  );
 }
 
 /**
@@ -100,15 +103,11 @@ export default function GuestLanding() {
         </div>
       </div>
 
-      <div className="mt-2.5 text-center text-[11px] leading-relaxed text-neutral-600">
-        <p>
-          By messaging Ugnay, you agree to our <LegalTerm>Terms</LegalTerm> and{" "}
-          <LegalTerm>Privacy Policy</LegalTerm>.
-        </p>
-        <p className="mt-0.5">
-          <LegalTerm>Your privacy choices</LegalTerm>
-        </p>
-      </div>
+      <p className="mt-2.5 text-center text-[11px] leading-relaxed text-neutral-600">
+        By messaging Ugnay, you agree to our{" "}
+        <LegalLink href="/terms">Terms of Service</LegalLink> and{" "}
+        <LegalLink href="/privacy">Privacy Policy</LegalLink>.
+      </p>
     </form>
   );
 
@@ -123,7 +122,6 @@ export default function GuestLanding() {
       <h1 className="font-display text-2xl font-semibold tracking-tight text-neutral-100 sm:text-3xl">
         Ask Ugnay anything
       </h1>
-      <p className="mt-2 text-sm text-neutral-500">Talk to several AI models in one place.</p>
     </div>
   );
 
@@ -131,17 +129,16 @@ export default function GuestLanding() {
     <main className="flex min-h-[100dvh] flex-col overflow-hidden bg-ink-950">
       <header className="flex shrink-0 items-center justify-between gap-3 px-4 pt-safe sm:px-6">
         <Link href="/" className="flex items-center gap-2 py-3.5">
+          {/* The mark alone. Its alt text names the link, which has no label
+            * of its own now that the wordmark is gone. */}
           <Image
             src="/logo/logo-256.png"
-            alt=""
-            width={24}
-            height={24}
+            alt="Ugnay"
+            width={40}
+            height={40}
             priority
-            className="h-6 w-6 rounded-md"
+            className="h-10 w-10 rounded-xl"
           />
-          <span className="font-display text-sm font-semibold tracking-tight text-neutral-100">
-            Ugnay
-          </span>
         </Link>
 
         <div className="flex items-center gap-2">
@@ -153,7 +150,7 @@ export default function GuestLanding() {
           </Link>
           <Link
             href="/login?mode=signup"
-            className="rounded-full bg-neutral-100 px-3.5 py-1.5 text-xs font-medium text-ink-950 transition hover:bg-white sm:text-sm"
+            className="rounded-full bg-neutral-100 px-3.5 py-1.5 text-xs font-medium text-ink-950 transition hover:opacity-90 sm:text-sm"
           >
             Sign up
           </Link>

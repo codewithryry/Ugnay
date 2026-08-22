@@ -43,12 +43,18 @@ export default function MessageList({
   if (loading) {
     return (
       <div className="flex-1 overflow-y-auto px-4 py-8 sm:px-4">
-        <div className="mx-auto w-full max-w-3xl space-y-6" aria-busy="true">
+        <div className="mx-auto w-full max-w-3xl space-y-7" aria-busy="true">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="space-y-2">
-              <div className="h-3.5 w-1/3 animate-pulse rounded bg-ink-850" />
-              <div className="h-3.5 w-4/5 animate-pulse rounded bg-ink-850" />
-              <div className="h-3.5 w-2/3 animate-pulse rounded bg-ink-850" />
+            <div key={i} className="space-y-6">
+              {/* A prompt bubble, then the reply it is waiting on. */}
+              <div className="flex justify-end">
+                <div className="h-9 w-1/2 animate-pulse rounded-2xl rounded-br-md bg-ink-850" />
+              </div>
+              <div className="space-y-2.5">
+                <div className="h-3.5 w-4/5 animate-pulse rounded-full bg-ink-850" />
+                <div className="h-3.5 w-full animate-pulse rounded-full bg-ink-850" />
+                <div className="h-3.5 w-2/3 animate-pulse rounded-full bg-ink-850" />
+              </div>
             </div>
           ))}
         </div>

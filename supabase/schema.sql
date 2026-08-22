@@ -501,3 +501,176 @@ end $$;
 revoke all on function public.delete_own_account() from public;
 revoke all on function public.delete_own_account() from anon;
 grant execute on function public.delete_own_account() to authenticated;
+
+-- ======================================================================
+-- v0.8 — workflows and knowledge
+-- Idempotent like everything above: safe to re-run on an existing project.
+-- ======================================================================
+
+-- ------------------------------------------------------------- workflows
+-- A reusable chain of prompts, e.g. summarise -> analyse -> write a report.
+-- Steps live in one jsonb array rather than a child table: they are always read
+-- and written together, and their order is the array's order.
+create table if not exists public.workflows (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  name        text not null check (char_length(name) between 1 and 120),
+  description text not null default '' check (char_length(description) <= 500),
+  /* [{ "title": text, "prompt": text }, ...] */
+  steps       jsonb not null default '[]'::jsonb,
+  /* Null means "use the account default", like projects do. */
+  provider    text,
+  model       text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+create index if not exists workflows_user_updated_idx
+  on public.workflows (user_id, updated_at desc);
+
+drop trigger if exists workflows_touch on public.workflows;
+create trigger workflows_touch before update on public.workflows
+  for each row execute function public.touch_updated_at();
+
+-- ---------------------------------------------------- knowledge (file RAG)
+-- Uploaded files are recorded in public.files (already defined above). Their
+-- text is split into chunks here, each with its own embedding, so a question
+-- can be answered from the passages that actually matter instead of a whole
+-- document. Same 1,024 dimensions as message_embeddings.
+create table if not exists public.file_chunks (
+  id          uuid primary key default gen_random_uuid(),
+  file_id     uuid not null references public.files(id) on delete cascade,
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  chunk_index integer not null,
+  content     text not null,
+  embedding   vector(1024) not null,
+  created_at  timestamptz not null default now(),
+  unique (file_id, chunk_index)
+);
+create index if not exists file_chunks_user_idx on public.file_chunks (user_id);
+create index if not exists file_chunks_file_idx on public.file_chunks (file_id);
+create index if not exists file_chunks_vector_idx
+  on public.file_chunks using ivfflat (embedding vector_cosine_ops) with (lists = 100);
+
+-- Marks how far indexing got, so the UI can tell "no text yet" apart from
+-- "this format cannot be read". Null means never attempted.
+alter table public.files add column if not exists indexed_at timestamptz;
+alter table public.files add column if not exists index_error text;
+
+-- Nearest passages among the CALLER's own uploads. Security invoker plus the
+-- auth.uid() filter, exactly like match_user_messages.
+create or replace function public.match_user_files(
+  query_embedding text,
+  match_count     integer default 5
+)
+returns table (
+  file_id    uuid,
+  file_name  text,
+  content    text,
+  similarity double precision
+)
+language sql stable security invoker set search_path = public as $$
+  select
+    c.file_id,
+    f.name as file_name,
+    c.content,
+    1 - (c.embedding <=> query_embedding::vector) as similarity
+  from public.file_chunks c
+  join public.files f on f.id = c.file_id
+  where c.user_id = auth.uid()
+  order by c.embedding <=> query_embedding::vector
+  limit greatest(1, least(match_count, 20));
+$$;
+
+-- --------------------------------------------------------------------- RLS
+alter table public.workflows   enable row level security;
+alter table public.file_chunks enable row level security;
+
+drop policy if exists "workflows: own rows"   on public.workflows;
+drop policy if exists "file chunks: own rows" on public.file_chunks;
+
+create policy "workflows: own rows" on public.workflows
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- A chunk is reachable only if it is owned by the caller AND its file is too,
+-- mirroring the messages policy.
+create policy "file chunks: own rows" on public.file_chunks
+  for all to authenticated
+  using (
+    auth.uid() = user_id
+    and exists (select 1 from public.files f where f.id = file_chunks.file_id and f.user_id = auth.uid())
+  )
+  with check (
+    auth.uid() = user_id
+    and exists (select 1 from public.files f where f.id = file_chunks.file_id and f.user_id = auth.uid())
+  );
+
+-- ------------------------------------------------------- storage: knowledge
+-- Private bucket for the uploaded originals. Every object is stored under the
+-- owner's user id, and the policies below are what keep one account out of
+-- another's folder.
+insert into storage.buckets (id, name, public)
+values ('knowledge', 'knowledge', false)
+on conflict (id) do nothing;
+
+drop policy if exists "knowledge: own objects" on storage.objects;
+create policy "knowledge: own objects" on storage.objects
+  for all to authenticated
+  using (bucket_id = 'knowledge' and (storage.foldername(name))[1] = auth.uid()::text)
+  with check (bucket_id = 'knowledge' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- ======================================================================
+-- v0.8.1 — knowledge indexing visibility
+-- Idempotent like everything above: safe to re-run on an existing project.
+-- ======================================================================
+
+-- How much of a file actually made it into the index. `total_chunks` is what
+-- the whole text would produce and `chunk_count` is what was embedded, so
+-- total > count means the file is indexed in part and the UI can say so
+-- instead of reporting it as complete.
+alter table public.files add column if not exists chunk_count integer;
+alter table public.files add column if not exists total_chunks integer;
+
+-- ======================================================================
+-- v0.9 — embedding provider is recorded with every vector
+-- Idempotent like everything above: safe to re-run on an existing project.
+-- ======================================================================
+
+-- Which model produced each vector. Vectors from two different models are not
+-- comparable, so a search has to stay inside one model — this column is what
+-- makes that possible, and what lets the UI spot a file that predates a
+-- provider change and offer to re-index it.
+--
+-- Null means "written before this column existed", i.e. by the retired
+-- OpenRouter model. Those rows are excluded by the filter below rather than
+-- deleted, so nothing is destroyed automatically.
+alter table public.file_chunks add column if not exists embedding_model text;
+alter table public.files add column if not exists embedding_model text;
+create index if not exists file_chunks_model_idx on public.file_chunks (user_id, embedding_model);
+
+-- Same function, plus an optional model filter. The default keeps every
+-- existing caller working; passing a model scopes the search to vectors that
+-- model produced.
+create or replace function public.match_user_files(
+  query_embedding text,
+  match_count     integer default 5,
+  model_filter    text default null
+)
+returns table (
+  file_id    uuid,
+  file_name  text,
+  content    text,
+  similarity double precision
+)
+language sql stable security invoker set search_path = public as $$
+  select
+    c.file_id,
+    f.name as file_name,
+    c.content,
+    1 - (c.embedding <=> query_embedding::vector) as similarity
+  from public.file_chunks c
+  join public.files f on f.id = c.file_id
+  where c.user_id = auth.uid()
+    and (model_filter is null or c.embedding_model = model_filter)
+  order by c.embedding <=> query_embedding::vector
+  limit greatest(1, least(match_count, 20));
+$$;

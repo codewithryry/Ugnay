@@ -52,12 +52,12 @@ export default function AccountDangerZone() {
   return (
     <>
       <section aria-labelledby="danger-zone-title" className="mt-8 border-t border-ink-800 pt-5">
-        <div className="rounded-xl border border-red-900/50 bg-red-950/20 p-4">
+        <div className="rounded-xl border border-danger/25 bg-danger-soft p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
-              <Trash2 className="mt-0.5 h-4 w-4 shrink-0 text-red-400" aria-hidden />
+              <Trash2 className="mt-0.5 h-4 w-4 shrink-0 text-danger" aria-hidden />
               <div className="min-w-0">
-                <h3 id="danger-zone-title" className="text-sm font-medium text-red-300">
+                <h3 id="danger-zone-title" className="text-sm font-medium text-danger">
                   Danger Zone
                 </h3>
                 <p className="mt-1 text-xs leading-relaxed text-neutral-500">
@@ -70,7 +70,7 @@ export default function AccountDangerZone() {
               type="button"
               onClick={() => setConfirmOpen(true)}
               disabled={busy}
-              className="flex w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-red-900/70 px-3 py-2 text-xs font-medium text-red-300 transition hover:bg-red-950/50 disabled:opacity-60 sm:w-auto"
+              className="flex w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-danger/30 px-3 py-2 text-xs font-medium text-danger transition hover:bg-danger/10 disabled:opacity-60 sm:w-auto"
             >
               {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
               Delete All
@@ -98,7 +98,7 @@ export default function AccountDangerZone() {
               type="button"
               onClick={() => void deleteAccount()}
               disabled={!ready}
-              className="flex items-center gap-2 rounded-lg bg-red-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg bg-danger px-3.5 py-2 text-sm font-medium text-ink-950 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
               Delete everything
@@ -133,12 +133,12 @@ export default function AccountDangerZone() {
             placeholder="DELETE"
             autoComplete="off"
             spellCheck={false}
-            className="w-full rounded-xl border border-ink-700 bg-ink-950 px-3.5 py-3 text-base text-neutral-100 placeholder:text-neutral-600 focus:border-red-800 sm:text-sm"
+            className="w-full rounded-xl border border-ink-700 bg-ink-950 px-3.5 py-3 text-base text-neutral-100 placeholder:text-neutral-600 focus:border-danger/60 sm:text-sm"
           />
         </div>
 
         {error && (
-          <p role="alert" className="mt-3 text-xs text-red-400">
+          <p role="alert" className="mt-3 text-xs text-danger">
             {error}
           </p>
         )}

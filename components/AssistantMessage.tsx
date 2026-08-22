@@ -3,6 +3,7 @@
 import { memo, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { FileText } from "lucide-react";
 import CodeBlock from "./CodeBlock";
 import MessageActions from "./MessageActions";
 import type { Message } from "@/types/db";
@@ -22,6 +23,13 @@ function AssistantMessageImpl({
   const sharingEnabled = useChatStore((s) => s.settings?.share_links_enabled ?? true);
   const showThinking = useChatStore((s) => s.showThinking);
   const reasoning = useChatStore((s) => s.reasoningByChat[message.chat_id] ?? "");
+  /**
+   * Knowledge files this answer was retrieved from. Live for the turn only, so
+   * it is shown on the reply currently streaming or just finished.
+   */
+  const knowledgeSources = useChatStore(
+    (s) => s.knowledgeSourcesByChat[message.chat_id] ?? EMPTY_SOURCES,
+  );
 
   // Built after mount so the server render cannot mismatch on the origin.
   const [shareUrl, setShareUrl] = useState<string | undefined>(undefined);
@@ -80,17 +88,39 @@ function AssistantMessageImpl({
         </div>
       )}
 
+      {/* Retrieval citation: which uploaded files grounded this answer. */}
+      {knowledgeSources.length > 0 && message.content && (
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] uppercase tracking-wider text-neutral-500">Sources</span>
+          {knowledgeSources.map((name) => (
+            <span
+              key={name}
+              title={name}
+              className="flex max-w-[16rem] items-center gap-1.5 rounded-full border border-ink-700 px-2.5 py-1 text-[11px] text-neutral-300"
+            >
+              <FileText className="h-3 w-3 shrink-0 text-neutral-500" aria-hidden />
+              <span className="truncate">{name}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
       {!streaming && message.content && (
         <MessageActions
           messageId={message.id}
           content={message.content}
           shareUrl={sharingEnabled ? shareUrl : undefined}
           onRegenerate={onRegenerate}
+          provider={message.provider}
+          model={message.model}
         />
       )}
     </div>
   );
 }
+
+/** Stable empty array, so the selector does not return a new one every render. */
+const EMPTY_SOURCES: string[] = [];
 
 function Dot({ delay }: { delay: string }) {
   return (

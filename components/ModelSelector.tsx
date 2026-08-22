@@ -313,7 +313,7 @@ export default function ModelSelector() {
                                 {m.label}
                               </span>
                               {selected && (
-                                <Check className="h-3.5 w-3.5 shrink-0 text-sky-400" aria-hidden />
+                                <Check className="h-3.5 w-3.5 shrink-0 text-accent" aria-hidden />
                               )}
                             </button>
                           );
@@ -361,7 +361,7 @@ function ModelOption({
           </span>
         )}
       </span>
-      {selected && <Check className="mt-0.5 h-4 w-4 shrink-0 text-sky-400" aria-hidden />}
+      {selected && <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden />}
     </button>
   );
 }

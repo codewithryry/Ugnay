@@ -6,7 +6,21 @@ import { supabaseEnv } from "./env";
 // The manifest is a generated route, so it passes through the middleware and
 // must stay reachable without a session or installing the PWA fails.
 // "/s" is the read-only shared-conversation view, which must open for anyone.
-const PUBLIC_PATHS = ["/login", "/auth", "/s/", "/manifest.webmanifest"];
+// The legal pages are linked from the signed-out landing and from /login, so
+// they have to open without a session too. "/faq" and "/release-notes" join
+// them because they link to each other and are static content — neither reads
+// any account data. /release-notes renders standalone when there is no session.
+const PUBLIC_PATHS = [
+  "/login",
+  "/auth",
+  "/s/",
+  "/about",
+  "/terms",
+  "/privacy",
+  "/faq",
+  "/release-notes",
+  "/manifest.webmanifest",
+];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });

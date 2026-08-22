@@ -5,6 +5,7 @@ import {
   BarChart3,
   ChevronRight,
   Columns3,
+  FileText,
   Flag,
   HelpCircle,
   History,
@@ -12,9 +13,8 @@ import {
   LogOut,
   MoreHorizontal,
   Settings,
-  Share2,
+  ShieldCheck,
   Sparkles,
-  Users,
   type LucideIcon,
 } from "lucide-react";
 import type { CurrentUser } from "./ChatApp";
@@ -22,22 +22,31 @@ import UserAvatar from "./UserAvatar";
 import { cn } from "@/lib/utils";
 
 /**
- * Help submenu entries. `href: null` means the destination does not exist yet,
- * so the row renders disabled with a "Soon" tag instead of a dead link — drop a
- * URL in and it becomes a real link with no other change.
+ * Help submenu entries. Every row is a real destination.
+ *
+ * Feedback is a modal rather than a page, so it sits outside this list and is
+ * rendered as the first row by hand.
  */
-/** Feedback is a modal rather than a destination, so it sits outside this list. */
-const HELP_ITEMS: { key: string; label: string; icon: LucideIcon; href: string | null }[] = [
+const HELP_ITEMS: { key: string; label: string; icon: LucideIcon; href: string }[] = [
   { key: "faq", label: "FAQ", icon: HelpCircle, href: "/faq" },
   { key: "release-notes", label: "Release Notes", icon: History, href: "/release-notes" },
-  { key: "community", label: "Community", icon: Users, href: null },
-  { key: "shared-links", label: "Shared Links", icon: Share2, href: null },
+  { key: "terms", label: "Terms of Service", icon: FileText, href: "/terms" },
+  { key: "privacy", label: "Privacy Policy", icon: ShieldCheck, href: "/privacy" },
 ];
 const UPGRADE_URL: string | null = "/upgrade";
 
 /** Help submenu geometry: always a popup beside the row, never inline. */
 const HELP_PANEL_WIDTH = 208;
+/** Visible gap between the account menu's edge and the submenu. */
 const HELP_PANEL_GAP = 8;
+/**
+ * The Help row sits inside the menu's own p-1.5 padding, so the row's edge is
+ * 6px short of the menu's edge. Clearing that as well is what keeps the submenu
+ * off the menu instead of flush against it — the same correction
+ * ModelSelector applies to its "More models" flyout.
+ */
+const MENU_PADDING = 6;
+const HELP_PANEL_OFFSET = HELP_PANEL_GAP + MENU_PADDING;
 const VIEWPORT_MARGIN = 8;
 
 const itemClass =
@@ -66,18 +75,27 @@ export default function AccountMenu({
   const [open, setOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [shared, setShared] = useState(false);
-  const [helpAnchor, setHelpAnchor] = useState<{ top: number; left: number } | null>(null);
+  const [helpAnchor, setHelpAnchor] = useState<{
+    bottom: number;
+    left: number;
+    /** Set only when the submenu is stacked above the menu and matches its width. */
+    width?: number;
+  } | null>(null);
   const helpRowRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   /**
    * Places the Help popup beside its row: to the right when there is room,
-   * flipped to the left otherwise, and clamped inside the viewport.
+   * flipped to the left otherwise. On a narrow screen neither side fits — two
+   * panels side by side need more width than the viewport has — so it is
+   * stacked above the menu instead, aligned to it and clear of the account
+   * section pinned below.
    */
   function placeHelp() {
     const rect = helpRowRef.current?.getBoundingClientRect();
     if (!rect) return;
 
-    const span = HELP_PANEL_GAP + HELP_PANEL_WIDTH;
+    const span = HELP_PANEL_OFFSET + HELP_PANEL_WIDTH;
     const maxLeft = window.innerWidth - VIEWPORT_MARGIN - HELP_PANEL_WIDTH;
     const fitsRight = rect.right + span <= window.innerWidth - VIEWPORT_MARGIN;
     const fitsLeft = rect.left - span >= VIEWPORT_MARGIN;
@@ -86,20 +104,33 @@ export default function AccountMenu({
     // menu. When a phone-width menu leaves no clear room on either side, the
     // panel is pushed against the nearest screen edge: it overlaps the menu's
     // far edge but still reads as a second panel off to the side.
+    // No room either side: stack it above the menu, matching the menu's own
+    // left edge and width so the two read as one column, with the same gap
+    // between them that the menu keeps from the account trigger.
+    if (!fitsRight && !fitsLeft) {
+      const menu = menuRef.current?.getBoundingClientRect();
+      if (menu) {
+        setHelpAnchor({
+          bottom: Math.max(VIEWPORT_MARGIN, window.innerHeight - menu.top + HELP_PANEL_GAP),
+          left: Math.max(VIEWPORT_MARGIN, menu.left),
+          width: menu.width,
+        });
+        return;
+      }
+    }
+
     const left = fitsRight
-      ? rect.right + HELP_PANEL_GAP
+      ? rect.right + HELP_PANEL_OFFSET
       : fitsLeft
         ? rect.left - span
         : Math.max(VIEWPORT_MARGIN, maxLeft);
 
-    // Roughly centred on the row, then kept fully on screen.
-    const estimatedHeight = 320;
-    const top = Math.min(
-      Math.max(VIEWPORT_MARGIN, rect.top - estimatedHeight / 2 + rect.height / 2),
-      Math.max(VIEWPORT_MARGIN, window.innerHeight - estimatedHeight - VIEWPORT_MARGIN),
-    );
+    // The panel's bottom edge is aligned with the row it opens from, so it
+    // grows upward. Centring it on the row instead let a long list drift down
+    // over the account section pinned below the menu.
+    const bottom = Math.max(VIEWPORT_MARGIN, window.innerHeight - rect.bottom);
 
-    setHelpAnchor({ top, left });
+    setHelpAnchor({ bottom, left });
   }
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -170,10 +201,15 @@ export default function AccountMenu({
         <>
           <div className="fixed inset-0 z-10" aria-hidden onClick={close} />
           <div
+            ref={menuRef}
             role="menu"
             aria-label="Account"
             className={cn(
-              "absolute bottom-[calc(100%+0.5rem)] left-2 right-2 z-20 max-h-[70dvh] space-y-0.5 overflow-y-auto overscroll-contain rounded-xl border border-ink-700 bg-ink-850 p-1.5 shadow-2xl",
+              // Flush with the account section's own padding, so the menu lines up
+              // with the nav rows above it instead of sitting 8px further in.
+              // Lifted a full 1rem off the trigger: at 0.5rem the menu's last row
+              // sat almost against the account row and the two read as one block.
+              "absolute bottom-[calc(100%+1rem)] left-0 right-0 z-20 max-h-[70dvh] space-y-0.5 overflow-y-auto overscroll-contain rounded-xl border border-ink-700 bg-ink-850 p-1.5 shadow-2xl",
               // The collapsed rail is only ~68px wide, which would squeeze the
               // labels onto several lines; the menu keeps its own width there
               // and opens across the conversation instead.
@@ -268,8 +304,14 @@ export default function AccountMenu({
                   aria-label="Help"
                   onMouseEnter={cancelHelpClose}
                   onMouseLeave={scheduleHelpClose}
-                  style={{ top: helpAnchor.top, left: helpAnchor.left, width: HELP_PANEL_WIDTH }}
-                  className="fixed z-40 space-y-0.5 rounded-xl border border-ink-700 bg-ink-850 p-1.5 shadow-2xl animate-fade-in"
+                  style={{
+                      bottom: helpAnchor.bottom,
+                      left: helpAnchor.left,
+                      width: helpAnchor.width ?? HELP_PANEL_WIDTH,
+                    }}
+                  // Bounded like the model menu: the list is long enough now
+                  // that a short viewport would otherwise clip its last rows.
+                  className="fixed z-40 max-h-[min(70dvh,26rem)] space-y-0.5 overflow-y-auto overscroll-contain rounded-xl border border-ink-700 bg-ink-850 p-1.5 shadow-2xl animate-fade-in"
                 >
                   <button
                     type="button"
@@ -284,26 +326,18 @@ export default function AccountMenu({
                     Feedback
                   </button>
 
-                  {HELP_ITEMS.map((item) =>
-                    item.href ? (
-                      <a
-                        key={item.key}
-                        role="menuitem"
-                        href={item.href}
-                        className={itemClass}
-                        onClick={close}
-                      >
-                        <item.icon className="h-4 w-4 text-neutral-500" aria-hidden />
-                        {item.label}
-                      </a>
-                    ) : (
-                      <span key={item.key} role="menuitem" aria-disabled className={disabledClass}>
-                        <item.icon className="h-4 w-4" aria-hidden />
-                        {item.label}
-                        <SoonTag />
-                      </span>
-                    ),
-                  )}
+                  {HELP_ITEMS.map((item) => (
+                    <a
+                      key={item.key}
+                      role="menuitem"
+                      href={item.href}
+                      className={itemClass}
+                      onClick={close}
+                    >
+                      <item.icon className="h-4 w-4 text-neutral-500" aria-hidden />
+                      {item.label}
+                    </a>
+                  ))}
 
                   <div className="my-1 h-px bg-ink-700" role="none" />
 

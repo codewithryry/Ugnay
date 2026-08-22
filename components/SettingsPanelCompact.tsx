@@ -237,7 +237,7 @@ export default function SettingsPanelCompact({
   return (
     <>
       <div
-        className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[1px]"
+        className="fixed inset-0 z-40 bg-black/50"
         aria-hidden
         onClick={onClose}
       />
@@ -276,7 +276,7 @@ export default function SettingsPanelCompact({
       {storeError && (
         <p
           role="alert"
-          className="shrink-0 border-b border-ink-800 bg-red-950/30 px-4 py-2 text-xs text-red-400 sm:px-5"
+          className="shrink-0 border-b border-ink-800 bg-danger-soft px-4 py-2 text-xs text-danger sm:px-5"
         >
           {storeError}
         </p>
@@ -474,7 +474,7 @@ export default function SettingsPanelCompact({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg px-3.5 py-2 text-sm text-neutral-400 hover:bg-ink-800 hover:text-neutral-100"
+              className="rounded-xl px-3.5 py-2 text-sm text-neutral-400 transition hover:bg-ink-800 hover:text-neutral-100"
             >
               Cancel
             </button>
@@ -482,7 +482,7 @@ export default function SettingsPanelCompact({
               type="button"
               onClick={persist}
               disabled={saving}
-              className="flex items-center gap-2 rounded-lg bg-neutral-100 px-3.5 py-2 text-sm font-medium text-ink-950 hover:bg-white disabled:opacity-60"
+              className="flex items-center gap-2 rounded-xl bg-neutral-100 px-3.5 py-2 text-sm font-medium text-ink-950 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
               Save changes
@@ -734,12 +734,12 @@ function AccountDetail({ user }: { user: CurrentUser }) {
       </div>
 
       {notice && (
-        <p role="status" className="pt-3 text-xs text-emerald-400">
+        <p role="status" className="pt-3 text-xs text-success">
           {notice}
         </p>
       )}
       {error && (
-        <p role="alert" className="pt-3 text-xs text-red-400">
+        <p role="alert" className="pt-3 text-xs text-danger">
           {error}
         </p>
       )}

@@ -194,7 +194,7 @@ export default function SettingsPanelDesktop({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg px-3.5 py-2 text-sm text-neutral-400 hover:bg-ink-800 hover:text-neutral-100"
+              className="rounded-xl px-3.5 py-2 text-sm text-neutral-400 transition hover:bg-ink-800 hover:text-neutral-100"
             >
               Cancel
             </button>
@@ -202,7 +202,7 @@ export default function SettingsPanelDesktop({
               type="button"
               onClick={persist}
               disabled={saving}
-              className="flex items-center gap-2 rounded-lg bg-neutral-100 px-3.5 py-2 text-sm font-medium text-ink-950 hover:bg-white disabled:opacity-60"
+              className="flex items-center gap-2 rounded-xl bg-neutral-100 px-3.5 py-2 text-sm font-medium text-ink-950 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
               Save changes
@@ -277,7 +277,7 @@ export default function SettingsPanelDesktop({
         </div>
 
         {storeError && (
-          <p role="alert" className="mx-4 mb-2 shrink-0 text-xs text-red-400 sm:mx-5">
+          <p role="alert" className="mx-4 mb-2 shrink-0 text-xs text-danger sm:mx-5">
             {storeError}
           </p>
         )}
@@ -709,12 +709,12 @@ function AccountDetails({ user }: { user: CurrentUser }) {
       </Row>
 
       {notice && (
-        <p role="status" className="pt-3 text-xs text-emerald-400">
+        <p role="status" className="pt-3 text-xs text-success">
           {notice}
         </p>
       )}
       {error && (
-        <p role="alert" className="pt-3 text-xs text-red-400">
+        <p role="alert" className="pt-3 text-xs text-danger">
           {error}
         </p>
       )}

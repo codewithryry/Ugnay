@@ -132,6 +132,33 @@ export interface ReleaseNote {
 /** Newest first — the page renders them in this order. */
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.9.0",
+    date: "2026-08-22",
+    title: "Knowledge, legal pages, and a lighter light theme",
+    changes: [
+      // Added
+      "Run this release's supabase/schema.sql in the Supabase SQL editor before using Knowledge. It is idempotent and adds the passage table, the indexing columns and the file search function.",
+      "Knowledge: upload the documents Ugnay should answer from. Their text is split into passages, indexed, and the relevant ones are recalled automatically while you chat. Word, plain text, Markdown, CSV, TSV and JSON are indexed; a PDF is stored but its text cannot be read yet, so it is not searched.",
+      "Answers grounded in your files now name them: a Sources row under the reply lists the documents the passages came from.",
+      "A file that failed to index, or only indexed in part, has a re-index button beside it.",
+      "Terms of Service and Privacy Policy are real pages now, linked from the messaging notice, the sign-in screen and the account menu under Help.",
+      "The FAQ, Release Notes, Terms and Privacy pages open without signing in.",
+      "You can change your account email address in Settings, and delete your account and everything in it from Settings → Danger Zone.",
+      "A reply's ⋯ menu names the model that produced it.",
+      // Improved
+      "Embeddings moved to Cohere, with an automatic switch to a second model when the first is rate limited — passages no longer go missing when a provider is busy.",
+      "Knowledge states plainly when a long document was only partly indexed, instead of reporting it as complete, and re-indexing reuses the passages it already has.",
+      "Compare models was rebuilt to match the rest of the app: the same composer, the same chips, the same spacing.",
+      "Conversation actions in the sidebar no longer sit on top of long titles, and the account menu keeps clear of the profile row.",
+      // Fixed
+      "The light theme is consistent throughout: code blocks, error and success notices, buttons and scrollbars all follow it. A primary button no longer turned unreadable on hover.",
+      "Knowledge indexing no longer drops passages when the embedding provider rate limits a batch.",
+      // Changed
+      "Blur effects were removed across the interface.",
+      "The sidebar shows the Ugnay mark on its own, without the wordmark.",
+    ],
+  },
+  {
     version: "0.6.0",
     date: "2026-08-21",
     title: "Prompt library, branching, sharing, compare and canvas",

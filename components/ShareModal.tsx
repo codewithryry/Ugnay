@@ -141,7 +141,7 @@ export default function ShareModal({
         <button
           type="button"
           onClick={onClose}
-          className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-ink-950 transition hover:bg-white"
+          className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-ink-950 transition hover:opacity-90"
         >
           Done
         </button>
@@ -159,7 +159,7 @@ export default function ShareModal({
       ) : share && url ? (
         <div className="mt-4">
           <div className="flex items-center gap-2 rounded-xl border border-ink-700 bg-ink-950 px-3 py-2.5">
-            <Globe className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden />
+            <Globe className="h-4 w-4 shrink-0 text-success" aria-hidden />
             <input
               readOnly
               value={url}

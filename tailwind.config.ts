@@ -20,6 +20,24 @@ const config: Config = {
           700: "rgb(var(--ink-700) / <alpha-value>)",
           600: "rgb(var(--ink-600) / <alpha-value>)",
         },
+        /* Semantic accents; see the token block in app/globals.css. */
+        accent: {
+          DEFAULT: "rgb(var(--accent) / <alpha-value>)",
+          strong: "rgb(var(--accent-strong) / <alpha-value>)",
+          soft: "rgb(var(--accent-soft) / <alpha-value>)",
+        },
+        success: {
+          DEFAULT: "rgb(var(--success) / <alpha-value>)",
+          soft: "rgb(var(--success-soft) / <alpha-value>)",
+        },
+        warning: {
+          DEFAULT: "rgb(var(--warning) / <alpha-value>)",
+          soft: "rgb(var(--warning-soft) / <alpha-value>)",
+        },
+        danger: {
+          DEFAULT: "rgb(var(--danger) / <alpha-value>)",
+          soft: "rgb(var(--danger-soft) / <alpha-value>)",
+        },
         neutral: {
           100: "rgb(var(--fg-100) / <alpha-value>)",
           200: "rgb(var(--fg-200) / <alpha-value>)",

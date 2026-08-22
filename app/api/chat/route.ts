@@ -11,11 +11,12 @@ import {
 import {
   composeCapabilityInstructions,
   composeHistoryContext,
+  composeKnowledgeContext,
   composeSystemPrompt,
   composeTitleMessages,
   withSystemPrompt,
 } from "@/lib/prompt";
-import { embedText, toVectorLiteral } from "@/lib/providers/embeddings";
+import { embedQuery, embedText, toVectorLiteral } from "@/lib/providers/embeddings";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -122,6 +123,28 @@ const HISTORY_LIMIT = 40;
 const MEMORY_CHAT_LIMIT = 8;
 /** How many semantically similar past messages to recall. */
 const MEMORY_MATCH_LIMIT = 5;
+/** How many passages from the knowledge base are recalled per turn. */
+const KNOWLEDGE_MATCH_LIMIT = 5;
+/**
+ * Cosine similarity a passage must clear to be worth sending. Without a floor
+ * every question drags in the nearest paragraph of an unrelated document.
+ */
+const KNOWLEDGE_MIN_SIMILARITY = 0.35;
+
+/**
+ * Phrases that ask for the uploaded files even though Knowledge mode is off,
+ * e.g. "summarise the document I uploaded". Deliberately narrow: the point of
+ * the gate is that a general question is NOT answered from the knowledge base,
+ * so only an explicit reference to the user's own files opens it. Matched on
+ * the raw message, so nothing is embedded or read unless one of these appears.
+ */
+const KNOWLEDGE_REFERENCE =
+  /(?:knowledge base|(?:my|the|that|this|these|those)\s+(?:uploaded\s+)?(?:file|files|document|documents|doc|docs|pdf|pdfs|upload|uploads|attachment|attachments|notes)|(?:file|files|document|documents|doc|docs|pdf|pdfs|notes)\s+(?:i|we)\s+(?:uploaded|attached|added|shared))/i;
+
+/** True when the message itself asks for the user's uploaded files. */
+function mentionsUploads(message: string) {
+  return KNOWLEDGE_REFERENCE.test(message);
+}
 
 /**
  * Server-side provider router + streaming endpoint.
@@ -167,6 +190,11 @@ export async function POST(request: NextRequest) {
     thinking?: "low" | "medium" | "high" | null;
     /** Let the provider search the web for this turn. */
     webSearch?: boolean;
+    /**
+     * Knowledge mode: search this account's uploaded files for the turn. Off by
+     * default, so a general question is answered from the normal context only.
+     */
+    knowledge?: boolean;
   };
   try {
     body = await request.json();
@@ -457,6 +485,71 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Knowledge recall: passages from the files this account uploaded. Separate
+  // from conversation memory on purpose — a file was uploaded to be used, so it
+  // is searched whether or not personalisation is on, and it is skipped only
+  // when there is nothing indexed. A temporary chat still gets it: the files
+  // are the user's own, and nothing about the turn is written down.
+  let knowledgeContext: string | null = null;
+  /** File names the answer was grounded in, relayed to the client for citation. */
+  let knowledgeSources: string[] = [];
+  if (body.knowledge === true || mentionsUploads(content)) {
+    // A cheap count first: without it an account with no knowledge base would
+    // still pay for one embedding call whenever the gate above opens.
+    const { count: indexedFiles } = await supabase
+      .from("files")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .not("indexed_at", "is", null);
+
+    const startedAt = Date.now();
+    // The model is needed as well as the vector: passages embedded by a
+    // different model are not comparable to this one, so the search is scoped
+    // to the model that answered here.
+    const { vector: queryVector, model: queryModel } = indexedFiles
+      ? await embedQuery(content)
+      : { vector: null, model: null };
+    const embeddedAt = Date.now();
+
+    if (queryVector) {
+      const { data: passages, error: knowledgeError } = await supabase.rpc("match_user_files", {
+        query_embedding: toVectorLiteral(queryVector),
+        match_count: KNOWLEDGE_MATCH_LIMIT,
+        model_filter: queryModel,
+      });
+
+      if (knowledgeError) {
+        // Most likely the v0.8 migration has not been run. The turn continues
+        // without the knowledge base rather than failing.
+        console.error("[ugnay] Knowledge recall unavailable:", knowledgeError);
+      } else {
+        const rows = (passages ?? []) as {
+          file_name: string;
+          content: string;
+          similarity: number;
+        }[];
+        const kept = rows.filter((p) => p.similarity >= KNOWLEDGE_MIN_SIMILARITY);
+
+        // Retrieval log: the scores and the two latencies are what a "why did
+        // it not find my document" question actually needs. Content is never
+        // logged — only names and numbers.
+        console.log(
+          `[ugnay] knowledge recall: ${kept.length}/${rows.length} passages over ` +
+            `${KNOWLEDGE_MIN_SIMILARITY} · model ${queryModel} · ` +
+            `embed ${embeddedAt - startedAt}ms · search ${Date.now() - embeddedAt}ms · ` +
+            `scores ${rows.map((p) => `${p.file_name}=${p.similarity.toFixed(3)}`).join(", ") || "none"}`,
+        );
+
+        if (kept.length) {
+          knowledgeSources = [...new Set(kept.map((p) => p.file_name))];
+          knowledgeContext = composeKnowledgeContext(
+            kept.map((p) => ({ file_name: p.file_name, content: p.content })),
+          );
+        }
+      }
+    }
+  }
+
   // The two Composer toggles, read strictly from this request: whatever the
   // client sent for this turn decides the turn, so flipping a toggle mid-chat
   // takes effect on the very next message.
@@ -467,7 +560,9 @@ export async function POST(request: NextRequest) {
   const webSearch = body.webSearch === true;
 
   const systemPrompt = composeSystemPrompt(
-    [settings?.global_system_prompt, historyContext].filter(Boolean).join("\n\n"),
+    [settings?.global_system_prompt, historyContext, knowledgeContext]
+      .filter(Boolean)
+      .join("\n\n"),
     [projectInstructions, chat?.system_prompt].filter(Boolean).join("\n\n") || null,
     composeCapabilityInstructions({ thinking: thinking !== null, webSearch }),
   );
@@ -507,6 +602,10 @@ export async function POST(request: NextRequest) {
 
       try {
         send({ type: "start", userMessageId: savedUserId, provider: provider.id, model });
+
+        // Which uploaded files this answer was grounded in. Sent before the
+        // first token so the citation is on screen while the reply streams.
+        if (knowledgeSources.length) send({ type: "sources", sources: knowledgeSources });
 
         let lastError: ProviderError | null = null;
         /** The attempt that produced the streamed text; continuations reuse it. */

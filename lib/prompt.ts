@@ -85,6 +85,34 @@ export function composeHistoryContext(
   ].join("\n");
 }
 
+/**
+ * Renders the passages recalled from the user's uploaded knowledge files. Only
+ * ever called with rows already scoped to one user by `match_user_files`.
+ */
+export function composeKnowledgeContext(
+  passages: { file_name: string; content: string }[],
+): string | null {
+  if (passages.length === 0) return null;
+  const lines = passages.map(
+    (p) => `- From "${p.file_name}": ${p.content.replace(/\s+/g, " ").slice(0, 900)}`,
+  );
+  const sources = [...new Set(passages.map((p) => p.file_name))];
+  return [
+    "The user has a knowledge base of files they uploaded. These passages were retrieved",
+    "for this question:",
+    ...lines,
+    "",
+    "How to use them:",
+    "- When the question is about these documents, answer only from the passages above.",
+    "  Do not fill a gap from your own knowledge without saying that is what you are doing.",
+    `- Name the file you took each fact from, as it is written here (${sources.join(", ")}).`,
+    "- If the passages do not contain what was asked, say plainly that the uploaded files",
+    "  do not cover it, rather than guessing or producing a plausible-sounding answer.",
+    "- If the question has nothing to do with these documents, ignore them entirely and",
+    "  answer normally; do not mention the knowledge base.",
+  ].join("\n");
+}
+
 export function withSystemPrompt(
   messages: ProviderMessage[],
   systemPrompt: string | null,

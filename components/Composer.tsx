@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Brain, Globe, Library, Loader2, Mic, Plus, Square } from "lucide-react";
+import { ArrowUp, Brain, FileText, Globe, Library, Loader2, Mic, Plus, Square } from "lucide-react";
 import ModelSelector from "./ModelSelector";
 import PromptLibraryModal from "./PromptLibraryModal";
 import { cn } from "@/lib/utils";
@@ -61,6 +61,8 @@ export default function Composer({ centered }: { centered: boolean }) {
   const setThinking = useChatStore((s) => s.setThinking);
   const webSearch = useChatStore((s) => s.webSearch);
   const setWebSearch = useChatStore((s) => s.setWebSearch);
+  const useKnowledge = useChatStore((s) => s.useKnowledge);
+  const setUseKnowledge = useChatStore((s) => s.setUseKnowledge);
   const richText = useChatStore((s) => s.settings?.rich_text_editor ?? false);
   const dictationMode = useChatStore((s) => s.settings?.dictation_refinement ?? "none");
 
@@ -253,6 +255,16 @@ export default function Composer({ centered }: { centered: boolean }) {
               title="Let the provider search the web for this reply"
             />
 
+            {/* Off by default: with it off nothing is retrieved from the
+                uploaded files, so a general question is answered normally. */}
+            <ToolChip
+              label="Knowledge"
+              icon={FileText}
+              active={useKnowledge}
+              onClick={() => setUseKnowledge(!useKnowledge)}
+              title="Answer from the files you uploaded to Knowledge"
+            />
+
             <ToolChip
               label="Prompts"
               icon={Library}
@@ -278,7 +290,7 @@ export default function Composer({ centered }: { centered: boolean }) {
                 className={cn(
                   "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition disabled:opacity-60",
                   dictation.listening
-                    ? "border-red-500/70 bg-red-950/40 text-red-300"
+                    ? "border-danger/60 bg-danger/10 text-danger"
                     : "border-ink-700 text-neutral-400 hover:bg-ink-850 hover:text-neutral-200",
                 )}
               >
@@ -322,7 +334,7 @@ export default function Composer({ centered }: { centered: boolean }) {
           </p>
         )}
         {dictation.error && (
-          <p role="alert" className="mt-2 text-center text-[11px] text-red-400">
+          <p role="alert" className="mt-2 text-center text-[11px] text-danger">
             {dictation.error}
           </p>
         )}

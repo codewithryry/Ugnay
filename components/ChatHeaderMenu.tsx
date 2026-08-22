@@ -159,7 +159,7 @@ export default function ChatHeaderMenu({ chatId, title }: { chatId: string; titl
                   close();
                   void deleteChat(chatId);
                 }}
-                className={cn(itemClass, "text-red-300 hover:bg-red-950/40")}
+                className={cn(itemClass, "text-danger hover:bg-danger/10")}
               >
                 <Trash2 className="h-4 w-4" aria-hidden />
                 Delete for good?
@@ -169,7 +169,7 @@ export default function ChatHeaderMenu({ chatId, title }: { chatId: string; titl
                 role="menuitem"
                 type="button"
                 onClick={() => setConfirmDelete(true)}
-                className={cn(itemClass, "text-red-300 hover:bg-red-950/40")}
+                className={cn(itemClass, "text-danger hover:bg-danger/10")}
               >
                 <Trash2 className="h-4 w-4" aria-hidden />
                 Delete
