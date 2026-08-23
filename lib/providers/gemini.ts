@@ -6,7 +6,15 @@ import { ProviderError, type ChatProvider, type ChatRequest, type ModelInfo, typ
  * GEMINI_API_KEY is set on the server.
  */
 const MODELS: ModelInfo[] = [
-  { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash", free: true, capabilities: ["text", "vision"] },
+  // 2.5 Flash is closed to new keys ("no longer available to new users"), so
+  // the current Flash is what the registry offers.
+  {
+    id: "gemini-3.6-flash",
+    label: "Gemini 3.6 Flash",
+    description: "Fast multimodal replies from Google.",
+    free: true,
+    capabilities: ["text", "vision"],
+  },
 ];
 
 async function* stream(req: ChatRequest): AsyncIterable<StreamEvent> {

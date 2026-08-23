@@ -12,6 +12,8 @@ import { supabaseEnv } from "./env";
 // any account data. /release-notes renders standalone when there is no session.
 const PUBLIC_PATHS = [
   "/login",
+  // The maintenance screen has to render for signed-out visitors too.
+  "/maintenance",
   "/auth",
   "/s/",
   "/about",
@@ -58,6 +60,53 @@ export async function updateSession(request: NextRequest) {
   }
 
   const { pathname } = request.nextUrl;
+
+  // Whole-site maintenance: everything is closed except the maintenance screen
+  // itself, the sign-in routes an admin needs to get in, and the admin surface
+  // once they are in. Checked here, before any other gate, so a direct URL, a
+  // refresh and a client route change are all blocked the same way.
+  const maintenanceExempt =
+    pathname.startsWith("/maintenance") ||
+    pathname.startsWith("/auth") ||
+    pathname === "/login" ||
+    pathname.startsWith("/api/auth") ||
+    // Polled by the maintenance screen so it can leave on its own.
+    pathname === "/api/maintenance" ||
+    // The admin surface guards itself: the page 404s and every /api/admin
+    // route denies unless profiles.role is 'admin'. Letting it through here is
+    // what keeps an admin from being locked out by their own switch.
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/api/admin");
+
+  if (!maintenanceExempt) {
+    const { data: site } = await supabase
+      .from("ai_settings")
+      .select("site_maintenance")
+      .eq("id", true)
+      .maybeSingle();
+
+    if (site?.site_maintenance) {
+      // Admin is resolved from the database, not from the URL: /admin is a
+      // protected route, never a bypass.
+      const { data: profile } = user
+        ? await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle()
+        : { data: null };
+
+      if (profile?.role !== "admin") {
+        if (pathname.startsWith("/api/")) {
+          return NextResponse.json(
+            { error: "Ugnay is down for maintenance. Please check back shortly." },
+            { status: 503, headers: response.headers },
+          );
+        }
+        const redirect = request.nextUrl.clone();
+        redirect.pathname = "/maintenance";
+        redirect.search = "";
+        return NextResponse.redirect(redirect);
+      }
+    }
+  }
+
   // Route handlers answer with their own 401 JSON rather than an HTML redirect.
   if (pathname.startsWith("/api/")) return response;
 

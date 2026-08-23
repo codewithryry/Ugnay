@@ -1,9 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
   DEFAULT_MODEL,
-  DEFAULT_PROVIDER,
   ProviderError,
+  isModelAvailable,
   listCatalog,
+  noteModelOk,
+  noteModelUnavailable,
   resolveModel,
   type ProviderMessage,
   type Usage,
@@ -17,6 +19,7 @@ import {
   withSystemPrompt,
 } from "@/lib/prompt";
 import { embedQuery, embedText, toVectorLiteral } from "@/lib/providers/embeddings";
+import { loadModelControls, type ModelControls } from "@/lib/model-controls";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -31,8 +34,8 @@ export const dynamic = "force-dynamic";
 /** Streams can outlive the default budget on slow free models. */
 export const maxDuration = 60;
 
-/** Up to this many alternative models are tried when one is unavailable. */
-const MAX_FALLBACKS = 2;
+/** Upper bound on models tried for one request, so a bad minute cannot stall. */
+const MAX_ROUTE_ATTEMPTS = 5;
 /**
  * Providers that automatic selection must never reach: they draw on a metered
  * credit balance, so they are only used when the user picks them explicitly.
@@ -92,25 +95,47 @@ async function generateChatTitle(
 }
 
 /**
- * Other configured models, nearest first: same provider before a different one,
- * free models before paid. Used only when the chosen model is unavailable.
+ * Configured models in the order automatic routing should try them: anything
+ * that just failed upstream goes last, then the requested pair, then the
+ * provider that was asked for, free models before metered ones, and finally
+ * the registry order — which is the configured provider priority. Providers
+ * that draw on a credit balance are never reached automatically.
  */
-function fallbackTargets(providerId: string, model: string) {
+function routeCandidates(providerId: string, model: string, controls: ModelControls) {
   const catalog = listCatalog().filter(
-    (entry) => entry.configured && !AUTO_EXCLUDED_PROVIDERS.has(entry.id),
+    (entry) =>
+      entry.configured &&
+      !AUTO_EXCLUDED_PROVIDERS.has(entry.id) &&
+      controls.statusOf(entry.id, "") === "available",
   );
   const candidates = [
     ...catalog.filter((entry) => entry.id === providerId),
     ...catalog.filter((entry) => entry.id !== providerId),
-  ].flatMap((entry) =>
+  ].flatMap((entry, providerRank) =>
     entry.models
-      .filter((m) => !(entry.id === providerId && m.id === model))
-      .map((m) => ({ providerId: entry.id, model: m.id, free: m.free })),
+      // Disabled or under maintenance is never routed to automatically.
+      .filter((m) => controls.statusOf(entry.id, m.id) === "available")
+      .map((m, modelRank) => ({
+        providerId: entry.id,
+        model: m.id,
+        free: m.free,
+        available: isModelAvailable(entry.id, m.id),
+        requested: entry.id === providerId && m.id === model,
+        priority: controls.priorityOf(entry.id, m.id),
+        rank: providerRank * 100 + modelRank,
+      })),
   );
 
   return candidates
-    .sort((a, b) => Number(b.free) - Number(a.free))
-    .slice(0, MAX_FALLBACKS)
+    .sort(
+      (a, b) =>
+        Number(b.available) - Number(a.available) ||
+        b.priority - a.priority ||
+        Number(b.requested) - Number(a.requested) ||
+        Number(b.free) - Number(a.free) ||
+        a.rank - b.rank,
+    )
+    .slice(0, MAX_ROUTE_ATTEMPTS)
     .map((candidate) => {
       const { provider, model: resolved } = resolveModel(candidate.providerId, candidate.model);
       return { provider, model: resolved };
@@ -348,6 +373,38 @@ export async function POST(request: NextRequest) {
     const message =
       err instanceof ProviderError ? err.message : "That model is not available.";
     return NextResponse.json({ error: message }, { status: 400 });
+  }
+
+  // Automatic whenever the request carries no model the user picked: the
+  // account default (or the app default) means "answer with whatever works".
+  // A model the user chose is honoured exactly.
+  const isAuto =
+    !body.model ||
+    body.model === (settings?.default_model ?? DEFAULT_MODEL) ||
+    body.model === DEFAULT_MODEL;
+
+  // Admin overrides: the global switch, then the status of the chosen model.
+  const controls = await loadModelControls(supabase);
+  if (controls.settings.maintenance) {
+    return NextResponse.json(
+      { error: controls.settings.message || "Ugnay AI is temporarily unavailable for maintenance." },
+      { status: 503 },
+    );
+  }
+
+  // A model the user picked is never swapped for another one, so a model the
+  // admin took offline has to be reported instead of silently rerouted.
+  const chosenStatus = controls.statusOf(provider.id, model);
+  if (chosenStatus !== "available" && !isAuto) {
+    return NextResponse.json(
+      {
+        error:
+          chosenStatus === "maintenance"
+            ? "That model is under maintenance. Please choose another one."
+            : "That model has been disabled. Please choose another one.",
+      },
+      { status: 503 },
+    );
   }
 
   // Metered providers are capped per account. Counted from stored replies, so
@@ -589,19 +646,33 @@ export async function POST(request: NextRequest) {
       // a working model; an explicitly chosen model is never swapped silently —
       // the user is asked to choose another one instead.
       const wantsExtras = thinking !== null || webSearch;
-      const isAuto = provider.id === DEFAULT_PROVIDER && model === DEFAULT_MODEL;
+      const routed = isAuto ? routeCandidates(provider.id, model, controls) : [];
+      const primary = routed[0] ?? { provider, model };
       const attempts = [
-        { provider, model, extras: true },
+        { ...primary, extras: true },
         // Retry the SAME model without the optional extras: some upstreams
         // reject `reasoning`/web plugins and answer "Provider returned error".
-        ...(wantsExtras ? [{ provider, model, extras: false }] : []),
-        ...(isAuto
-          ? fallbackTargets(provider.id, model).map((target) => ({ ...target, extras: false }))
-          : []),
+        ...(wantsExtras ? [{ ...primary, extras: false }] : []),
+        ...routed.slice(1).map((target) => ({ ...target, extras: false })),
       ];
+      // Auto with nothing left to route to: every model is disabled, under
+      // maintenance, or its provider is off.
+      if (isAuto && !routed.length) {
+        send({
+          type: "error",
+          error: "No AI model is available right now. Please try again later.",
+        });
+        controller.close();
+        return;
+      }
 
       try {
-        send({ type: "start", userMessageId: savedUserId, provider: provider.id, model });
+        send({
+          type: "start",
+          userMessageId: savedUserId,
+          provider: primary.provider.id,
+          model: primary.model,
+        });
 
         // Which uploaded files this answer was grounded in. Sent before the
         // first token so the citation is on screen while the reply streams.
@@ -632,6 +703,7 @@ export async function POST(request: NextRequest) {
             }
 
             let passFinish: "stop" | "length" | undefined;
+            const startedAt = Date.now();
             for await (const event of attempt.provider.streamChat({
               model: attempt.model,
               messages: conversation,
@@ -655,6 +727,7 @@ export async function POST(request: NextRequest) {
                 passFinish = event.finishReason;
               }
             }
+            noteModelOk(attempt.provider.id, attempt.model, Date.now() - startedAt);
             used = attempt;
             truncated = passFinish === "length";
             break;
@@ -663,6 +736,11 @@ export async function POST(request: NextRequest) {
             // otherwise the user would see two half answers.
             const retryable =
               err instanceof ProviderError && err.retryable && !text && index < attempts.length - 1;
+            if (err instanceof ProviderError && err.retryable) {
+              // Real upstream failure: skip this pair for the next little
+              // while so other requests route around it too.
+              noteModelUnavailable(attempt.provider.id, attempt.model, err.status);
+            }
             if (!retryable) throw err;
             lastError = err as ProviderError;
             console.error(

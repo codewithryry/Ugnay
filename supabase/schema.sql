@@ -674,3 +674,315 @@ language sql stable security invoker set search_path = public as $$
   order by c.embedding <=> query_embedding::vector
   limit greatest(1, least(match_count, 20));
 $$;
+
+-- ======================================================================
+-- v0.10 — training dataset preserved across account deletion
+-- Idempotent like everything above: safe to re-run on an existing project.
+-- ======================================================================
+
+-- ------------------------------------------------------ training_messages
+-- Conversation data kept for future model training after the account that
+-- produced it is deleted. Deliberately holds no account-identifying columns:
+-- no user id, no email, no profile or chat title. `conversation_id` is the
+-- source chat's random uuid, kept only so turns of one conversation can be
+-- grouped back together; the chat row itself is gone.
+--
+-- Not read by any live feature yet — this is a dataset, not a cache.
+create table if not exists public.training_messages (
+  id                 uuid primary key default gen_random_uuid(),
+  conversation_id    uuid not null,
+  -- The source message uuid, kept solely to make preservation idempotent:
+  -- re-running deletion can never duplicate a turn.
+  source_message_id  uuid not null unique,
+  turn_index         integer not null default 0,
+  role               text not null check (role in ('system','user','assistant')),
+  content            text not null default '',
+  provider           text,
+  model              text,
+  prompt_tokens      integer,
+  completion_tokens  integer,
+  total_tokens       integer,
+  system_prompt      text,
+  message_created_at timestamptz,
+  collected_at       timestamptz not null default now()
+);
+create index if not exists training_messages_conversation_idx
+  on public.training_messages (conversation_id, turn_index asc);
+
+-- No policies: RLS on with none defined means no client role can read or
+-- write this table. Only the security-definer collector below touches it.
+alter table public.training_messages enable row level security;
+revoke all on public.training_messages from anon, authenticated;
+
+-- Copies the caller's eligible conversations into the training dataset.
+-- Eligible = the account opted in via Settings → Data Controls → "Improve the
+-- model for everyone" (user_settings.improve_model).
+create or replace function public.collect_training_messages(target_user uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (
+    select 1 from public.user_settings
+    where user_id = target_user and improve_model
+  ) then
+    return;
+  end if;
+
+  insert into public.training_messages (
+    conversation_id, source_message_id, turn_index, role, content,
+    provider, model, prompt_tokens, completion_tokens, total_tokens,
+    system_prompt, message_created_at
+  )
+  select
+    m.chat_id,
+    m.id,
+    row_number() over (partition by m.chat_id order by m.created_at, m.id) - 1,
+    m.role,
+    m.content,
+    coalesce(m.provider, c.provider),
+    coalesce(m.model, c.model),
+    m.prompt_tokens,
+    m.completion_tokens,
+    m.total_tokens,
+    c.system_prompt,
+    m.created_at
+  from public.messages m
+  join public.chats c on c.id = m.chat_id
+  where m.user_id = target_user
+  on conflict (source_message_id) do nothing;
+end $$;
+
+revoke all on function public.collect_training_messages(uuid) from public, anon, authenticated;
+
+-- Deletion, unchanged in effect for the account: the preservation step runs
+-- first, inside the same transaction as the delete, so the training copy
+-- exists before the source rows cascade away — and neither happens if the
+-- other fails.
+create or replace function public.delete_own_account()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'delete_own_account requires an authenticated caller';
+  end if;
+  perform public.collect_training_messages(auth.uid());
+  delete from auth.users where id = auth.uid();
+end $$;
+
+revoke all on function public.delete_own_account() from public;
+revoke all on function public.delete_own_account() from anon;
+grant execute on function public.delete_own_account() to authenticated;
+
+-- ======================================================================
+-- v0.11 — admin role and AI model management
+-- Idempotent like everything above: safe to re-run on an existing project.
+-- ======================================================================
+
+-- ---------------------------------------------------------------- role
+-- Two roles only: every account is a 'user' until someone with database access
+-- promotes it. Nothing in the app can hand out 'admin'.
+alter table public.profiles add column if not exists role text not null default 'user';
+do $$
+begin
+  alter table public.profiles add constraint profiles_role_check check (role in ('user', 'admin'));
+exception when duplicate_object then null;
+end $$;
+
+-- Is the caller an admin? Security definer so it can be used inside policies
+-- on profiles itself without recursing through that table's own RLS.
+create or replace function public.is_admin()
+returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select p.role = 'admin' from public.profiles p where p.id = auth.uid()), false);
+$$;
+grant execute on function public.is_admin() to authenticated;
+
+-- The "profiles: own row" policy lets an account update its own profile, so
+-- the role column needs its own guard: only an admin may change it.
+create or replace function public.guard_profile_role()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.role is distinct from old.role and not public.is_admin() then
+    raise exception 'only an admin may change a role';
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists profiles_guard_role on public.profiles;
+create trigger profiles_guard_role before update on public.profiles
+  for each row execute function public.guard_profile_role();
+
+-- ------------------------------------------------------- model controls
+-- Admin overrides on top of the provider registry in lib/providers. A row is
+-- an override, so a model with no row behaves exactly as it does today.
+-- `model_id = ''` means the row applies to the whole provider.
+create table if not exists public.model_controls (
+  provider_id text not null,
+  model_id    text not null default '',
+  status      text not null default 'available'
+              check (status in ('available', 'disabled', 'maintenance')),
+  /* Higher wins when automatic routing ranks candidates. */
+  priority    integer not null default 0,
+  note        text,
+  updated_at  timestamptz not null default now(),
+  updated_by  uuid references auth.users(id) on delete set null,
+  primary key (provider_id, model_id)
+);
+
+drop trigger if exists model_controls_touch on public.model_controls;
+create trigger model_controls_touch before update on public.model_controls
+  for each row execute function public.touch_updated_at();
+
+-- --------------------------------------------------------- ai settings
+-- One row, holding the global switch that takes Ugnay AI chat offline.
+create table if not exists public.ai_settings (
+  id          boolean primary key default true check (id),
+  maintenance boolean not null default false,
+  message     text not null default 'Ugnay AI is temporarily unavailable for maintenance.',
+  updated_at  timestamptz not null default now(),
+  updated_by  uuid references auth.users(id) on delete set null
+);
+insert into public.ai_settings (id) values (true) on conflict (id) do nothing;
+
+drop trigger if exists ai_settings_touch on public.ai_settings;
+create trigger ai_settings_touch before update on public.ai_settings
+  for each row execute function public.touch_updated_at();
+
+-- --------------------------------------------------------------------- RLS
+-- Both tables are read by routing on every request, so any signed-in account
+-- may read them; only an admin may write.
+alter table public.model_controls enable row level security;
+alter table public.ai_settings    enable row level security;
+
+drop policy if exists "model controls: read"  on public.model_controls;
+drop policy if exists "model controls: admin" on public.model_controls;
+drop policy if exists "ai settings: read"     on public.ai_settings;
+drop policy if exists "ai settings: admin"    on public.ai_settings;
+
+create policy "model controls: read" on public.model_controls
+  for select to authenticated using (true);
+create policy "model controls: admin" on public.model_controls
+  for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+create policy "ai settings: read" on public.ai_settings
+  for select to authenticated using (true);
+create policy "ai settings: admin" on public.ai_settings
+  for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+-- ======================================================================
+-- v0.12 — unified admin dashboard
+-- Idempotent like everything above: safe to re-run on an existing project.
+-- ======================================================================
+
+-- Everything the /admin dashboard shows, in one round trip. Security definer
+-- because an admin has to see totals across every account, which RLS rightly
+-- hides from the ordinary policies; the is_admin() guard is what replaces it.
+-- Only counts and non-sensitive columns are returned — no message content.
+create or replace function public.admin_overview()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  result jsonb;
+begin
+  if not public.is_admin() then
+    raise exception 'admin only';
+  end if;
+
+  select jsonb_build_object(
+    'users', jsonb_build_object(
+      'total', (select count(*) from public.profiles),
+      'admins', (select count(*) from public.profiles where role = 'admin'),
+      'new_7d', (select count(*) from public.profiles where created_at >= now() - interval '7 days')
+    ),
+    'conversations', jsonb_build_object(
+      'chats', (select count(*) from public.chats),
+      'messages', (select count(*) from public.messages),
+      'messages_7d', (select count(*) from public.messages where created_at >= now() - interval '7 days'),
+      'projects', (select count(*) from public.projects),
+      'shared', (select count(*) from public.shared_chats where not revoked),
+      'by_model', coalesce((
+        select jsonb_agg(m) from (
+          select coalesce(provider, 'unknown') as provider,
+                 coalesce(model, 'unknown') as model,
+                 count(*) as messages,
+                 coalesce(sum(total_tokens), 0) as total_tokens
+          from public.messages
+          where role = 'assistant'
+          group by 1, 2 order by 3 desc limit 10
+        ) m), '[]'::jsonb)
+    ),
+    'knowledge', jsonb_build_object(
+      'files', (select count(*) from public.files),
+      'indexed', (select count(*) from public.files where indexed_at is not null),
+      'failed', (select count(*) from public.files where index_error is not null),
+      'chunks', (select count(*) from public.file_chunks),
+      'embeddings', (select count(*) from public.message_embeddings)
+    ),
+    'training', jsonb_build_object(
+      'messages', (select count(*) from public.training_messages),
+      'conversations', (select count(distinct conversation_id) from public.training_messages),
+      'last_collected_at', (select max(collected_at) from public.training_messages),
+      'opted_in', (select count(*) from public.user_settings where improve_model)
+    ),
+    'feedback', jsonb_build_object(
+      'app', (select count(*) from public.app_feedback),
+      'up', (select count(*) from public.message_feedback where rating = 'up'),
+      'down', (select count(*) from public.message_feedback where rating = 'down')
+    ),
+    'audit', coalesce((
+      select jsonb_agg(a) from (
+        select c.provider_id, c.model_id, c.status, c.priority, c.updated_at,
+               (select p.email from public.profiles p where p.id = c.updated_by) as updated_by
+        from public.model_controls c order by c.updated_at desc limit 20
+      ) a), '[]'::jsonb),
+    'ai_settings_updated_at', (select updated_at from public.ai_settings where id)
+  ) into result;
+
+  return result;
+end $$;
+
+revoke all on function public.admin_overview() from public, anon;
+grant execute on function public.admin_overview() to authenticated;
+
+-- ======================================================================
+-- v0.13 — whole-site maintenance
+-- Idempotent like everything above: safe to re-run on an existing project.
+-- ======================================================================
+
+-- The AI switch takes chat offline; this one takes the whole app offline for
+-- everyone but an admin, who keeps working so the site can be fixed.
+alter table public.ai_settings add column if not exists site_maintenance boolean not null default false;
+-- Empty by default: the maintenance screen shows only what an admin writes.
+alter table public.ai_settings add column if not exists site_message text not null default '';
+
+-- The maintenance screen has to render for signed-out visitors too, so the
+-- read policy covers anon as well. Only the two switches are exposed; writing
+-- still requires an admin.
+drop policy if exists "ai settings: read" on public.ai_settings;
+create policy "ai settings: read" on public.ai_settings
+  for select to anon, authenticated using (true);
+
+-- ======================================================================
+-- v0.14 — maintenance window end time
+-- Idempotent like everything above: safe to re-run on an existing project.
+-- ======================================================================
+
+-- When the site is expected back. Null means "no estimate given", and the
+-- maintenance screen then simply says nothing about timing.
+alter table public.ai_settings add column if not exists site_back_at timestamptz;
+
+-- Clears the generic text rows created before the default became empty, so a
+-- project that never set its own message shows the heading alone.
+update public.ai_settings
+set site_message = ''
+where site_message = 'Ugnay is down for maintenance. Please check back shortly.';

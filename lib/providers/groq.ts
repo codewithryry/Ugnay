@@ -6,7 +6,20 @@ import { ProviderError, type ChatProvider, type ChatRequest, type ModelInfo } fr
  * server — unconfigured providers are filtered out of the model selector.
  */
 const MODELS: ModelInfo[] = [
-  { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B (Groq)", free: true, capabilities: ["text"] },
+  {
+    id: "openai/gpt-oss-120b",
+    label: "GPT-OSS 120B",
+    description: "Large open model, very fast.",
+    free: true,
+    capabilities: ["text"],
+  },
+  {
+    id: "openai/gpt-oss-20b",
+    label: "GPT-OSS 20B",
+    description: "Smaller open model, quickest replies.",
+    free: true,
+    capabilities: ["text"],
+  },
 ];
 
 export const groqProvider: ChatProvider = {

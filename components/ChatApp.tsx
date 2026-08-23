@@ -14,6 +14,7 @@ import ReleaseNotesView from "./ReleaseNotesView";
 import WorkflowsView from "./WorkflowsView";
 import KnowledgeView from "./KnowledgeView";
 import Sidebar from "./Sidebar";
+import MaintenanceWatcher from "./MaintenanceWatcher";
 import { applyTheme } from "@/lib/theme";
 import { DEFAULT_CHAT_TITLE } from "@/lib/utils";
 import { TEMPORARY_CHAT_ID, useChatStore } from "@/store/chatStore";
@@ -66,6 +67,23 @@ export default function ChatApp(props: {
   useEffect(() => {
     void init(props.userId);
   }, [init, props.userId]);
+
+  // An admin can enable or disable a model while this tab is open. Re-reading
+  // the catalog when the tab is focused again keeps the picker honest without
+  // a reload, a spinner, or anything moving in the conversation.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") {
+        void useChatStore.getState().refreshCatalog();
+      }
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, []);
 
   // A link that names a chat (/?chat=<id>) opens that conversation once the
   // store is ready. Nothing is opened when the route names no chat.
@@ -220,6 +238,10 @@ export default function ChatApp(props: {
 
       {/* /search keeps the chat behind it, like a command palette. */}
       {props.view === "search" && <SearchOverlay onClose={() => router.push("/")} />}
+
+      {/* Sends everyone but an admin to the maintenance screen the moment the
+        * site switch is turned on. */}
+      <MaintenanceWatcher pause={streaming} />
 
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} user={user} />
 

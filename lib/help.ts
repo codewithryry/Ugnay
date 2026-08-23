@@ -132,6 +132,22 @@ export interface ReleaseNote {
 /** Newest first — the page renders them in this order. */
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.10.0",
+    date: "2026-08-23",
+    title: "Model routing, admin dashboard and maintenance mode",
+    changes: [
+      "Run this release's supabase/schema.sql in the Supabase SQL editor. It is idempotent and adds the admin role, the model control and AI settings tables, the training dataset table, and the admin overview function.",
+      "Auto now ranks every configured model — not just OpenRouter — and moves to the next one when a model is busy, times out or errors, so a failing provider no longer ends the turn. A model you picked yourself is still never swapped.",
+      "Current models: Gemini 3.6 Flash, and GPT-OSS 120B and 20B on Groq. The retired Gemini 2.0 Flash and Llama 3.3 entries were removed.",
+      "The model picker is more compact, grouped by provider, and now lists only models that are actually available.",
+      "An admin dashboard at /admin: model and provider availability, maintenance and routing priority, live health and recent failures, usage totals, knowledge and training figures, and an audit of model changes. Admin-only, enforced on the server and by row level security.",
+      "Maintenance switches: one takes Ugnay AI chat offline with a message of your choosing, the other takes the whole site offline for everyone but an admin, with an optional time it is expected back. Open tabs move in and out of maintenance on their own, without anyone refreshing.",
+      "Deleting an account now preserves the conversations of accounts that opted into improving the model, in a separate table that holds no name, email or account id. Everything else about deletion is unchanged.",
+      "Changing a model in the admin no longer reloads or interrupts a conversation: the picker updates quietly when the tab is focused again.",
+      "A custom 404 page, in the same visual language as the rest of Ugnay.",
+    ],
+  },
+  {
     version: "0.9.0",
     date: "2026-08-22",
     title: "Knowledge, legal pages, and a lighter light theme",

@@ -112,6 +112,8 @@ interface ChatState {
   setChatArchived: (chatId: string, archived: boolean) => Promise<void>;
   setChatSystemPrompt: (chatId: string, prompt: string | null) => Promise<void>;
   setModel: (provider: string, model: string) => Promise<void>;
+  /** Re-reads /api/models in the background; nothing else in the UI moves. */
+  refreshCatalog: () => Promise<void>;
   saveSettings: (patch: Partial<UserSettings>) => Promise<void>;
   sendMessage: (content: string) => Promise<void>;
   stopStreaming: () => void;
@@ -324,7 +326,9 @@ async function runSend(
 
     if (!res.ok || !res.body) {
       const detail = await res.json().catch(() => null);
-      console.error(`[ugnay] /api/chat failed (${res.status}):`, detail);
+      // A message the server wrote for the user (maintenance, a disabled
+      // model) is shown in the chat, so it is not also an app error.
+      if (!detail?.error) console.error(`[ugnay] /api/chat failed (${res.status}).`);
       if (res.status === 401) {
         void recoverFromAuthFailure();
         throw new Error(
@@ -813,6 +817,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const supabase = createClient();
     const { error } = await supabase.from("chats").update({ system_prompt: value }).eq("id", chatId);
     if (error) set({ chats: previous, error: "Could not save the chat instructions." });
+  },
+
+  async refreshCatalog() {
+    // Admin can disable a model while someone is chatting. Only the list of
+    // choices changes here — no chat, message or setting is touched, so the
+    // conversation on screen is untouched too.
+    const data = await fetch("/api/models")
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+    if (!data?.providers) return;
+    const next = data.providers as ProviderCatalogEntry[];
+    const current = get().catalog;
+    if (JSON.stringify(current) === JSON.stringify(next)) return;
+    set({ catalog: next });
   },
 
   async setModel(provider, model) {

@@ -67,3 +67,60 @@ export function resolveModel(providerId: string, modelId: string) {
   const known = provider.listModels().some((m) => m.id === modelId);
   return { provider, model: known ? modelId : provider.listModels()[0].id };
 }
+
+/**
+ * Short-lived, in-process health record per provider/model pair. Everything
+ * here is written from real traffic — an actual upstream error, or the time a
+ * real stream took — so nothing is probed, guessed or simulated. A pair that
+ * fails is skipped for a minute instead of failing every request, and the
+ * admin AI Models page reads the same record.
+ */
+const UNAVAILABLE_MS = 60_000;
+
+export interface ModelHealth {
+  /** Millisecond latency of the last successful stream, if there was one. */
+  latencyMs?: number;
+  lastOkAt?: number;
+  failures: number;
+  lastErrorAt?: number;
+  lastErrorStatus?: number;
+  unavailableUntil?: number;
+}
+
+const health = new Map<string, ModelHealth>();
+const pairKey = (providerId: string, model: string) => `${providerId}:${model}`;
+
+function entry(providerId: string, model: string): ModelHealth {
+  const key = pairKey(providerId, model);
+  let record = health.get(key);
+  if (!record) {
+    record = { failures: 0 };
+    health.set(key, record);
+  }
+  return record;
+}
+
+export function noteModelUnavailable(providerId: string, model: string, status?: number) {
+  const record = entry(providerId, model);
+  record.failures += 1;
+  record.lastErrorAt = Date.now();
+  record.lastErrorStatus = status;
+  record.unavailableUntil = Date.now() + UNAVAILABLE_MS;
+}
+
+/** Records a stream that completed, so latency reflects real replies only. */
+export function noteModelOk(providerId: string, model: string, latencyMs: number) {
+  const record = entry(providerId, model);
+  record.latencyMs = latencyMs;
+  record.lastOkAt = Date.now();
+  record.unavailableUntil = undefined;
+}
+
+export function isModelAvailable(providerId: string, model: string) {
+  const until = health.get(pairKey(providerId, model))?.unavailableUntil;
+  return until === undefined || until <= Date.now();
+}
+
+export function getModelHealth(providerId: string, model: string): ModelHealth {
+  return health.get(pairKey(providerId, model)) ?? { failures: 0 };
+}
