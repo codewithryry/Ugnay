@@ -14,9 +14,9 @@ export interface Plan {
   id: PlanId;
   name: string;
   tagline: string;
-  /** USD per month when billed monthly. */
+  /** Pesos per month when billed monthly. */
   monthly: number;
-  /** USD per month when billed yearly, charged annually. */
+  /** Pesos per month when billed yearly, charged annually. */
   yearlyMonthly: number;
   cta: string;
   recommended?: boolean;
@@ -49,8 +49,8 @@ export const PLANS: Plan[] = [
     id: "plus",
     name: "Ugnay Plus",
     tagline: "More capable models for everyday work.",
-    monthly: 10,
-    yearlyMonthly: 8,
+    monthly: 499,
+    yearlyMonthly: 399,
     cta: "Choose Plus",
     recommended: true,
     features: [
@@ -65,8 +65,8 @@ export const PLANS: Plan[] = [
     id: "pro",
     name: "Ugnay Pro",
     tagline: "Frontier models and longer context.",
-    monthly: 30,
-    yearlyMonthly: 24,
+    monthly: 1499,
+    yearlyMonthly: 1199,
     cta: "Choose Pro",
     features: [
       "Access to frontier models",
@@ -81,8 +81,8 @@ export const PLANS: Plan[] = [
     id: "ultra",
     name: "Ugnay Ultra",
     tagline: "Maximum limits for heavy, sustained use.",
-    monthly: 100,
-    yearlyMonthly: 80,
+    monthly: 4999,
+    yearlyMonthly: 3999,
     cta: "Choose Ultra",
     features: [
       "Access to every model Ugnay supports",
@@ -97,4 +97,17 @@ export const PLANS: Plan[] = [
 
 export function priceFor(plan: Plan, cycle: BillingCycle) {
   return cycle === "yearly" ? plan.yearlyMonthly : plan.monthly;
+}
+
+/** Pesos, the way a price is written here: ₱499. */
+export function formatPeso(amount: number) {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: "PHP",
+      maximumFractionDigits: 0,
+    }).format(amount);
+  } catch {
+    return `₱${amount.toLocaleString()}`;
+  }
 }

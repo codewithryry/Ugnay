@@ -1,4 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { isCurrentUserAdmin } from "@/lib/admin";
+import { findRule, loadCreditRules, spend } from "@/lib/credits";
 import { MAX_SPEECH_CHARS, createSpeechStream, speechConfigured } from "@/lib/providers/speech";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
@@ -52,6 +54,28 @@ export async function POST(request: NextRequest) {
 
   const text = body.text?.trim().slice(0, MAX_SPEECH_CHARS);
   if (!text) return NextResponse.json({ error: "Nothing to read aloud." }, { status: 400 });
+
+  // Reading a reply aloud is a paid feature when its rule says so. Charged
+  // before the provider call, since there are no tokens to price it by; a
+  // disabled or zero-amount rule charges nothing.
+  // Admins are exempt here for the same reason as in chat.
+  const speechRule = (await isCurrentUserAdmin())
+    ? null
+    : findRule(await loadCreditRules(supabase), "speech");
+  if (speechRule && speechRule.amount > 0) {
+    const balance = await spend(supabase, user.id, speechRule.amount, "speech", {
+      characters: text.length,
+    });
+    if (balance === null) {
+      return NextResponse.json(
+        {
+          error: "You are out of Ugnay Credits. Claim your daily credits to keep using this.",
+          action: "out-of-credits",
+        },
+        { status: 402 },
+      );
+    }
+  }
 
   try {
     const audio = await createSpeechStream(text);

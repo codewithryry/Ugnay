@@ -6,7 +6,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   BookOpen,
+  Coins,
+  CreditCard,
   Cpu,
+  Wallet,
   FileText,
   GraduationCap,
   LayoutDashboard,
@@ -15,6 +18,9 @@ import {
   ShieldCheck,
   Users,
 } from "lucide-react";
+import AdminCreditsSection from "./AdminCreditsView";
+import AdminPaymentsSection from "./AdminPaymentsView";
+import AdminWalletsSection from "./AdminWalletsView";
 import AdminModelsSection, {
   AdminAiSettingsSection,
   AdminHealthSection,
@@ -54,6 +60,9 @@ const SECTIONS = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "models", label: "AI Models", icon: Cpu },
   { id: "conversations", label: "Conversations", icon: MessagesSquare },
+  { id: "credits", label: "Credits", icon: Coins },
+  { id: "wallets", label: "Wallets", icon: Wallet },
+  { id: "payments", label: "Payments", icon: CreditCard },
   { id: "knowledge", label: "Knowledge", icon: BookOpen },
   { id: "training", label: "Training", icon: GraduationCap },
   { id: "health", label: "System Health", icon: ShieldCheck },
@@ -410,6 +419,12 @@ export default function AdminDashboard() {
             )}
 
             {section === "models" && <AdminModelsSection />}
+
+            {section === "credits" && <AdminCreditsSection />}
+
+            {section === "wallets" && <AdminWalletsSection />}
+
+            {section === "payments" && <AdminPaymentsSection />}
 
             {section === "conversations" && (
               <div className="space-y-4">

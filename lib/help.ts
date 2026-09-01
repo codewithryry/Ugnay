@@ -96,14 +96,98 @@ export const FAQ_SECTIONS: FaqSection[] = [
     ],
   },
   {
+    id: "credits",
+    title: "Ugnay Credits",
+    items: [
+      {
+        id: "what-are-credits",
+        question: "What are Ugnay Credits?",
+        answer:
+          "The unit Ugnay charges AI usage in. They are not money and have no cash value: they cannot be withdrawn, transferred between accounts or exchanged back into currency. Your balance, what you have earned and spent, and your recent activity are all in Credits in the account menu.",
+      },
+      {
+        id: "spending-credits",
+        question: "What costs credits?",
+        answer:
+          "Chatting, priced from the number of tokens the provider actually reported rather than an estimate. Web search, Knowledge recall, personalisation from your history and reading a reply aloud are charged on top when you use them. An admin sets every price, and turning a rule off stops it charging immediately.",
+      },
+      {
+        id: "earning-credits",
+        question: "How do I earn credits without paying?",
+        answer:
+          "Several ways: a welcome bonus when you first sign up, credits you can claim once a day, a bonus for keeping a daily streak going, achievements at longer streaks, one-off tasks like completing your profile or uploading a Knowledge file, watching a rewarded ad, and inviting other people. Ugnay checks each task against what your account has actually done, so nothing can be claimed early or twice.",
+      },
+      {
+        id: "out-of-credits",
+        question: "What happens when I run out of credits?",
+        answer:
+          "Ugnay checks your balance before it calls a model, so a message you could not pay for stops before it is sent rather than failing halfway. Your conversations, files and settings are untouched — you simply cannot send a new message until you claim your daily credits, finish a task, or buy more.",
+      },
+      {
+        id: "rewarded-ads",
+        question: "How do rewarded ads work?",
+        answer:
+          "You watch an ad and credits are added once the ad network confirms the view directly with Ugnay's servers. Closing an ad early pays nothing, and the confirmation cannot be faked from your browser. There is a limit on how many you can be paid for in a day.",
+      },
+      {
+        id: "referrals",
+        question: "How do invite rewards work?",
+        answer:
+          "Open Invite & Earn in the account menu for your code and a link to share. You are paid once the person you invited has actually held a conversation — not when they open the link and not when they sign up. Copying or sharing never earns anything by itself, you cannot invite yourself, and there is a monthly cap on how many invites one account is paid for.",
+      },
+      {
+        id: "credit-limits",
+        question: "Is there a limit on credits?",
+        answer:
+          "Ugnay can set a maximum number of credits in circulation across all ordinary accounts. If a reward would take the total past it, the reward is refused rather than paid in part, and you are told. Spending is never affected — you can always use credits you already hold.",
+      },
+      {
+        id: "admin-accounts",
+        question: "Why is my balance shown as unlimited?",
+        answer:
+          "You are on an admin account. Admin accounts are not charged for AI usage, and their balances are left out of the circulation totals so those figures reflect ordinary accounts.",
+      },
+    ],
+  },
+  {
     id: "plans-and-billing",
-    title: "Plans & billing",
+    title: "Buying credits",
     items: [
       {
         id: "pricing",
         question: "Do I have to pay?",
         answer:
-          "No. Ugnay runs on free models by default and the Free plan needs no card. The Upgrade page lists the tiers planned beyond it.",
+          "No. Ugnay runs on free models and every account can earn credits without spending anything — the daily claim, tasks, streaks, rewarded ads and invites all cost nothing. Buying credits is there if you would rather not wait.",
+      },
+      {
+        id: "buy-credits",
+        question: "How do I buy credits?",
+        answer:
+          "Open Buy credits, pick a package — each shows its price in pesos and the credits you receive — and choose GCash. Send the exact amount to the GCash number shown, then submit your reference number and a screenshot of your receipt. You can add a note if something needs explaining.",
+      },
+      {
+        id: "payment-verification",
+        question: "When do purchased credits arrive?",
+        answer:
+          "After an admin has checked your payment by hand. Your order shows as Pending until then, and becomes Approved once the credits are added or Rejected if the payment could not be confirmed — with the admin's reason, when one is given. A reference number, an amount or a screenshot is never treated as proof on its own, and nothing is added automatically.",
+      },
+      {
+        id: "gcash-qr",
+        question: "Is there a GCash QR code?",
+        answer:
+          "Not yet. Rather than show a code that cannot be scanned, the store says so and asks you to send to the GCash number shown instead. Everything else about the purchase works the same way.",
+      },
+      {
+        id: "paypal",
+        question: "Why is PayPal greyed out?",
+        answer:
+          "Because there is no PayPal integration yet. It is shown disabled rather than hidden so it is clear the option exists and is simply not available. GCash is the only way to buy credits today.",
+      },
+      {
+        id: "refunds",
+        question: "Can I get a refund?",
+        answer:
+          "Credits are a usage unit rather than a purchase of goods, and they have no cash value, so purchases are not generally refundable. If a payment was taken in error or credited wrongly, say so from the Feedback page and it will be looked at.",
       },
     ],
   },
@@ -132,6 +216,25 @@ export interface ReleaseNote {
 /** Newest first — the page renders them in this order. */
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.11.0",
+    date: "2026-09-01",
+    title: "Credits you can buy and earn, invites, and supply controls",
+    changes: [
+      "Run this release's supabase/schema.sql in the Supabase SQL editor. It is idempotent and adds the payment method, referral and admin audit tables, the circulation ceiling, and the wallet management and cleanup functions.",
+      "Invite & Earn, in the account menu: your own invite code, a link to share, how many people have joined through it and what that has paid. You earn the reward only once someone you invited has actually held a conversation — sharing or copying a link never pays anything on its own.",
+      "Invites are counted against a hashed sign-in identity rather than an account, so you cannot invite yourself from a second account, and deleting and recreating an account cannot earn the same referral twice. An admin sets what a referral pays, what the person joining gets, and how many referrals one account may be paid for each month.",
+      "Buying credits with GCash works end to end. Pick a package, send the exact amount to the GCash number shown, then submit your reference number, a screenshot of the receipt and an optional note. Your order shows as Pending until an admin checks it, then Approved or Rejected — with the reason, if one was given.",
+      "Nothing about a payment is verified automatically. A reference number, an amount and a screenshot are claims shown to an admin, never proof: credits are added only when an admin approves the order, and only once, however many times the page is submitted or the button is pressed.",
+      "A QR code for GCash is not available yet, so the store says so plainly and asks you to send to the number instead, rather than showing a code that cannot be scanned. PayPal stays greyed out and marked unavailable until a real integration exists.",
+      "Admin → Payments is where GCash is configured — the number, the account name, the instructions and, later, a QR image — and where every payment is reviewed. Approving pays through the same credit ledger as every other credit.",
+      "Admin → Wallets: credits in circulation across ordinary accounts, a searchable list of every wallet, one account's full history, and the ability to grant or remove credits with a reason that is recorded on the ledger.",
+      "A maximum circulation can now be set. Every path that creates credits is measured against it inside the same transaction that writes the balance, so a reward that would take the supply past the ceiling is refused whole rather than paid in part. Spending is never blocked by it.",
+      "An admin can delete one account's application data without touching the sign-in itself. The hashed identity that prevents reward farming is deliberately kept, so a wiped account cannot reclaim its welcome bonus or its one-time tasks, and the action is written to an admin audit log.",
+      "Admin accounts are entitled rather than funded: their chat is not charged, and their balances are left out of the circulation figures so the totals mean what they say.",
+      "Chat now checks your balance before calling a provider, so a turn that could not be paid for stops with a clear message instead of failing part-way through.",
+    ],
+  },
+  {
     version: "0.10.0",
     date: "2026-08-23",
     title: "Model routing, admin dashboard and maintenance mode",
@@ -145,6 +248,13 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "Deleting an account now preserves the conversations of accounts that opted into improving the model, in a separate table that holds no name, email or account id. Everything else about deletion is unchanged.",
       "Changing a model in the admin no longer reloads or interrupts a conversation: the picker updates quietly when the tab is focused again.",
       "A custom 404 page, in the same visual language as the rest of Ugnay.",
+      "Ugnay Credits: AI chat is now paid for in credits, priced from the tokens a provider actually reported, with web search, knowledge recall and personalisation charged on top. The wallet lives in the account menu under Credits and shows your balance, what you earned and spent, and your recent activity.",
+      "Earn credits by claiming them once a day, keeping a streak, or watching a rewarded ad. Ad credits are added only after the ad network confirms the view with Ugnay's servers.",
+      "Admin → Credits sets what every feature costs, what each reward pays, the cooldowns and daily limits, and can grant credits to an account.",
+      "Credits can also be bought at /credits with PayPal or GCash. Payments are confirmed by hand: you submit your reference number, the order shows as pending verification, and the credits arrive once an admin approves it.",
+      "New accounts start with a welcome bonus of Ugnay Credits, claimable once. One-time rewards are remembered against a hashed sign-in identity rather than the account, so they survive deleting and recreating an account — and cannot be claimed twice that way.",
+      "Tasks & Rewards: earn credits for completing your profile, creating a workspace, uploading a Knowledge file, saving a prompt, building a workflow, sharing a conversation and more. Ugnay checks each one against what your account has actually done, so nothing can be claimed twice or claimed early.",
+      "Streak achievements pay a bonus at 7 and 30 consecutive days, and reading a reply aloud is priced like the other paid features. Turning a rule off in Admin stops it charging or paying immediately.",
     ],
   },
   {

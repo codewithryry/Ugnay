@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import {
   BarChart3,
+  Coins,
   ChevronRight,
   Columns3,
   FileText,
   Flag,
+  Gift,
   HelpCircle,
   History,
   Link2,
@@ -59,6 +61,8 @@ export default function AccountMenu({
   onOpenSettings,
   onOpenFeedback,
   onOpenUsage,
+  onOpenCredits,
+  onOpenReferral,
   onOpenCompare,
   onSignOut,
   compact = false,
@@ -67,6 +71,8 @@ export default function AccountMenu({
   onOpenSettings: () => void;
   onOpenFeedback: () => void;
   onOpenUsage: () => void;
+  onOpenCredits: () => void;
+  onOpenReferral: () => void;
   onOpenCompare: () => void;
   onSignOut: () => void;
   /** Icon-only trigger for the collapsed sidebar; the menu itself is unchanged. */
@@ -242,6 +248,34 @@ export default function AccountMenu({
             >
               <BarChart3 className="h-4 w-4 text-neutral-500" aria-hidden />
               Usage
+            </button>
+
+            <button
+              role="menuitem"
+              type="button"
+              onMouseEnter={() => setHelpOpen(false)}
+              onClick={() => {
+                close();
+                onOpenCredits();
+              }}
+              className={itemClass}
+            >
+              <Coins className="h-4 w-4 text-neutral-500" aria-hidden />
+              Credits
+            </button>
+
+            <button
+              role="menuitem"
+              type="button"
+              onMouseEnter={() => setHelpOpen(false)}
+              onClick={() => {
+                close();
+                onOpenReferral();
+              }}
+              className={itemClass}
+            >
+              <Gift className="h-4 w-4 text-neutral-500" aria-hidden />
+              Invite &amp; Earn
             </button>
 
             <button

@@ -52,6 +52,8 @@ export default function Composer({ centered }: { centered: boolean }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const streaming = useChatStore((s) => s.streaming);
+  // Set when the server last refused a turn for want of credits.
+  const creditsShortfall = useChatStore((s) => s.creditsShortfall);
   const hydrated = useChatStore((s) => s.hydrated);
   const sendMessage = useChatStore((s) => s.sendMessage);
   const stopStreaming = useChatStore((s) => s.stopStreaming);
@@ -176,7 +178,7 @@ export default function Composer({ centered }: { centered: boolean }) {
 
   function submit() {
     const text = value.trim();
-    if (!text || streaming) return;
+    if (!text || streaming || creditsShortfall) return;
     setValue("");
     void sendMessage(text);
   }
@@ -201,6 +203,28 @@ export default function Composer({ centered }: { centered: boolean }) {
         }}
         className="mx-auto w-full max-w-3xl"
       >
+        {/* The server refused the last turn for want of credits. Sending stays
+          * blocked here until the wallet can cover it; the server re-checks
+          * regardless, so this is convenience rather than authorisation. */}
+        {creditsShortfall && (
+          <div
+            role="status"
+            className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-xs text-danger"
+          >
+            <span className="min-w-0">
+              Not enough credits — this message needs {creditsShortfall.required}, you have{" "}
+              {creditsShortfall.balance}. Earn more from your wallet, or buy credits.
+            </span>
+            <button
+              type="button"
+              onClick={() => useChatStore.getState().openCredits()}
+              className="shrink-0 rounded-lg border border-danger/30 px-2 py-1 text-[11px] font-medium text-danger transition hover:bg-danger/10"
+            >
+              Get credits
+            </button>
+          </div>
+        )}
+
         <div className="rounded-3xl border border-ink-700 bg-ink-900 p-2 shadow-lg transition focus-within:border-ink-600">
           <label htmlFor="composer" className="sr-only">
             Message Ugnay
@@ -317,7 +341,7 @@ export default function Composer({ centered }: { centered: boolean }) {
               ) : (
                 <button
                   type="submit"
-                  disabled={!value.trim() || !hydrated}
+                  disabled={!value.trim() || !hydrated || Boolean(creditsShortfall)}
                   aria-label="Send message"
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-ink-950 transition hover:opacity-90 disabled:cursor-not-allowed disabled:bg-ink-700 disabled:text-neutral-500"
                 >

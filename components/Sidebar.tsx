@@ -54,6 +54,8 @@ export default function Sidebar({
   onOpenSettings,
   onOpenFeedback,
   onOpenUsage,
+  onOpenCredits,
+  onOpenReferral,
   onOpenCompare,
   activeNav = "chat",
 }: {
@@ -61,6 +63,8 @@ export default function Sidebar({
   onOpenSettings: () => void;
   onOpenFeedback: () => void;
   onOpenUsage: () => void;
+  onOpenCredits: () => void;
+  onOpenReferral: () => void;
   onOpenCompare: () => void;
   /** Highlights the row for the surface currently shown. */
   activeNav?: "chat" | "search" | "release-notes" | "workflows" | "knowledge";
@@ -427,6 +431,8 @@ export default function Sidebar({
           onOpenSettings={onOpenSettings}
           onOpenFeedback={onOpenFeedback}
           onOpenUsage={onOpenUsage}
+          onOpenCredits={onOpenCredits}
+          onOpenReferral={onOpenReferral}
           onOpenCompare={onOpenCompare}
           onSignOut={signOut}
           compact={collapsed}

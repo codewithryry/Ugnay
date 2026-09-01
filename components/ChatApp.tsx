@@ -8,6 +8,8 @@ import SettingsPanel from "./SettingsPanel";
 import WorkspacePanel from "./WorkspacePanel";
 import FeedbackModal from "./FeedbackModal";
 import UsageModal from "./UsageModal";
+import CreditsModal from "./CreditsModal";
+import ReferralModal from "./ReferralModal";
 import ModelCompareView from "./ModelCompareView";
 import ArtifactPanel from "./ArtifactPanel";
 import ReleaseNotesView from "./ReleaseNotesView";
@@ -49,6 +51,10 @@ export default function ChatApp(props: {
   // /feedback opens the modal over the chat, the way /search opens its overlay.
   const [feedbackOpen, setFeedbackOpen] = useState(props.view === "feedback");
   const [usageOpen, setUsageOpen] = useState(false);
+  const [creditsOpen, setCreditsOpen] = useState(false);
+  const [referralOpen, setReferralOpen] = useState(false);
+  const creditsRequests = useChatStore((s) => s.creditsRequests);
+  const refreshCredits = useChatStore((s) => s.refreshCredits);
   const [compareOpen, setCompareOpen] = useState(false);
   const streaming = useChatStore((s) => s.streaming);
   const notifyOnFinish = useChatStore((s) => s.settings?.notify_on_finish ?? false);
@@ -58,6 +64,42 @@ export default function ChatApp(props: {
   const activeChatTitle = useChatStore(
     (s) => s.chats.find((c) => c.id === s.activeChatId)?.title ?? null,
   );
+  /**
+   * An invite code the login page parked before signing in — Google sign-in
+   * leaves the page, so the code cannot travel in React state. Redeeming it
+   * pays nobody: the server records a pending referral and decides later,
+   * once the invited account has actually used Ugnay.
+   *
+   * Cleared whatever the answer is, so a code that has already been used, or
+   * belongs to the caller themselves, is not retried on every load.
+   */
+  useEffect(() => {
+    let code: string | null = null;
+    try {
+      code = window.localStorage.getItem("ugnay:invite");
+    } catch {
+      return;
+    }
+    if (!code) return;
+    try {
+      window.localStorage.removeItem("ugnay:invite");
+    } catch {
+      // Nothing to do; the request below still runs once.
+    }
+
+    void (async () => {
+      const res = await fetch("/api/credits/referrals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const body = await res.json().catch(() => null);
+      // A refused code is ordinary — already invited, own code, invites off —
+      // and is surfaced in Invite & Earn rather than interrupting the chat.
+      if (res.ok && body?.ok) await refreshCredits();
+    })();
+  }, [refreshCredits]);
+
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedChat = searchParams.get("chat");
@@ -66,7 +108,13 @@ export default function ChatApp(props: {
 
   useEffect(() => {
     void init(props.userId);
+    void useChatStore.getState().refreshCredits();
   }, [init, props.userId]);
+
+  // "Get credits" on an out-of-credits error opens the wallet.
+  useEffect(() => {
+    if (creditsRequests) setCreditsOpen(true);
+  }, [creditsRequests]);
 
   // An admin can enable or disable a model while this tab is open. Re-reading
   // the catalog when the tab is focused again keeps the picker honest without
@@ -209,6 +257,8 @@ export default function ChatApp(props: {
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenFeedback={() => setFeedbackOpen(true)}
         onOpenUsage={() => setUsageOpen(true)}
+        onOpenCredits={() => setCreditsOpen(true)}
+        onOpenReferral={() => setReferralOpen(true)}
         onOpenCompare={() => setCompareOpen(true)}
         activeNav={
           // /feedback is the chat with a modal over it, so the chat row stays active.
@@ -248,6 +298,10 @@ export default function ChatApp(props: {
       <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
 
       <UsageModal open={usageOpen} onClose={() => setUsageOpen(false)} />
+
+      <CreditsModal open={creditsOpen} onClose={() => setCreditsOpen(false)} />
+
+      <ReferralModal open={referralOpen} onClose={() => setReferralOpen(false)} />
     </div>
   );
 }

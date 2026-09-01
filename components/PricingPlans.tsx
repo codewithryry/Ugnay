@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Check } from "lucide-react";
+import { ArrowLeft, Check, Coins } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   CURRENT_PLAN,
   PLANS,
   YEARLY_DISCOUNT,
+  formatPeso,
   priceFor,
   type BillingCycle,
 } from "@/lib/plans";
@@ -33,9 +34,24 @@ export default function PricingPlans() {
         </h1>
         <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-neutral-500">
           Pick the level of model access and usage that fits how you work. Free stays free — no
-          card required.
+          card required. Credits can be topped up today; the paid tiers are not open yet.
         </p>
       </div>
+
+      <Link
+        href="/credits"
+        className="mx-auto mt-7 flex w-full max-w-2xl items-center gap-3 rounded-2xl border border-ink-800 bg-ink-900 px-4 py-3.5 transition hover:border-ink-700 hover:bg-ink-850"
+      >
+        <Coins className="h-5 w-5 shrink-0 text-accent" aria-hidden />
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium text-neutral-100">Buy Ugnay Credits</span>
+          <span className="mt-0.5 block text-xs leading-relaxed text-neutral-500">
+            Top up with PayPal or GCash, in pesos. Credits are what AI replies are charged
+            against — available now, while the plans below are not.
+          </span>
+        </span>
+        <span className="shrink-0 text-xs text-neutral-400">Open store</span>
+      </Link>
 
       <div
         role="group"
@@ -100,13 +116,13 @@ export default function PricingPlans() {
 
               <p className="mt-5 flex items-baseline gap-1">
                 <span className="text-3xl font-semibold tracking-tight text-neutral-100">
-                  ${price}
+                  {formatPeso(price)}
                 </span>
                 <span className="text-xs text-neutral-500">/ month</span>
               </p>
               <p className="mt-1 min-h-[1rem] text-[11px] text-neutral-600">
                 {cycle === "yearly" && price > 0
-                  ? `Billed yearly at $${price * 12}`
+                  ? `Billed yearly at ${formatPeso(price * 12)}`
                   : cycle === "yearly"
                     ? "Free forever"
                     : ""}
@@ -146,8 +162,9 @@ export default function PricingPlans() {
       </div>
 
       <p className="mx-auto mb-10 mt-8 max-w-2xl text-center text-xs leading-relaxed text-neutral-600">
-        Paid plans are not available yet — Ugnay has no payment processing connected, so the paid
-        tiers cannot be purchased and every account stays on Ugnay Free.
+        Subscriptions are not open yet, so every account stays on Ugnay Free. Credits are the
+        way to pay for usage today — buy them in the store above, or earn them from the daily
+        claim and tasks in your wallet.
       </p>
     </div>
   );

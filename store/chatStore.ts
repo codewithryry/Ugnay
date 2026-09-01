@@ -76,9 +76,19 @@ interface ChatState {
   streamingChatId: string | null;
   error: string | null;
   /** Set when the error needs the model selector rather than a retry. */
-  errorAction: "change-model" | null;
+  errorAction: "change-model" | "out-of-credits" | null;
+  /** Ugnay Credits left, or null before the wallet has been read. */
+  creditBalance: number | null;
+  /**
+   * The server refused the last turn for want of credits, and how many it
+   * wanted. Composing stays blocked until the wallet can cover it again —
+   * this is a UI convenience only; the server checks on every request.
+   */
+  creditsShortfall: { balance: number; required: number } | null;
   /** Bumped to ask the model selector to open itself. */
   modelPickerRequests: number;
+  /** Bumped to ask the shell to open the credit wallet. */
+  creditsRequests: number;
   /** Block opened in the canvas beside the conversation; null when closed. */
   artifact: { language: string; code: string } | null;
   sidebarOpen: boolean;
@@ -114,6 +124,8 @@ interface ChatState {
   setModel: (provider: string, model: string) => Promise<void>;
   /** Re-reads /api/models in the background; nothing else in the UI moves. */
   refreshCatalog: () => Promise<void>;
+  /** Re-reads the credit balance. Server-authoritative; never set locally. */
+  refreshCredits: () => Promise<void>;
   saveSettings: (patch: Partial<UserSettings>) => Promise<void>;
   sendMessage: (content: string) => Promise<void>;
   stopStreaming: () => void;
@@ -128,6 +140,7 @@ interface ChatState {
   setUseKnowledge: (on: boolean) => void;
   setError: (error: string | null) => void;
   openModelPicker: () => void;
+  openCredits: () => void;
   openArtifact: (language: string, code: string) => void;
   closeArtifact: () => void;
 }
@@ -335,6 +348,28 @@ async function runSend(
           detail?.error ?? "Your session has expired. Please sign in again to keep chatting.",
         );
       }
+      if (res.status === 402) {
+        const priced =
+          typeof detail?.balance === "number" && typeof detail?.required === "number";
+        set({
+          errorAction: "out-of-credits",
+          ...(priced
+            ? {
+                creditBalance: detail.balance,
+                creditsShortfall: { balance: detail.balance, required: detail.required },
+              }
+            : {}),
+        });
+        // The composer's own banner says this, with the figures and a way to
+        // fix it, so throwing here as well would say it twice. Only a 402
+        // without those figures — which the banner cannot render — falls
+        // through to the error line.
+        if (priced) return;
+        throw new Error(
+          detail?.error ??
+            "You are out of Ugnay Credits. Claim your daily credits or earn more to continue.",
+        );
+      }
       throw new Error(detail?.error ?? `Request failed (${res.status}).`);
     }
 
@@ -342,7 +377,7 @@ async function runSend(
     const decoder = new TextDecoder();
     let buffer = "";
     let streamError: string | null = null;
-    let streamErrorAction: "change-model" | null = null;
+    let streamErrorAction: "change-model" | "out-of-credits" | null = null;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -373,6 +408,10 @@ async function runSend(
         else if (event.type === "error") {
           streamError = event.error;
           streamErrorAction = event.action === "change-model" ? "change-model" : null;
+        }
+        // What the turn cost, and the balance left after it.
+        else if (event.type === "credits" && typeof event.balance === "number") {
+          set({ creditBalance: event.balance, creditsShortfall: null });
         }
         // A fallback kicked in: tell the user which model answered instead.
         else if (event.type === "notice") set({ error: event.notice });
@@ -442,7 +481,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   streamingChatId: null,
   error: null,
   errorAction: null,
+  creditBalance: null,
+  creditsShortfall: null,
   modelPickerRequests: 0,
+  creditsRequests: 0,
   artifact: null,
   sidebarOpen: false,
 
@@ -819,6 +861,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (error) set({ chats: previous, error: "Could not save the chat instructions." });
   },
 
+  async refreshCredits() {
+    const data = await fetch("/api/credits")
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+    if (typeof data?.wallet?.balance !== "number") return;
+    const balance = data.wallet.balance as number;
+    const shortfall = get().creditsShortfall;
+    set({
+      creditBalance: balance,
+      // Earned enough since the refusal: let the composer go again.
+      creditsShortfall: shortfall && balance >= shortfall.required ? null : shortfall,
+    });
+  },
+
   async refreshCatalog() {
     // Admin can disable a model while someone is chatting. Only the list of
     // choices changes here — no chat, message or setting is touched, so the
@@ -1038,6 +1094,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setError(error) {
     set({ error, errorAction: error ? get().errorAction : null });
+  },
+
+  openCredits() {
+    set((s) => ({ creditsRequests: s.creditsRequests + 1 }));
   },
 
   openModelPicker() {

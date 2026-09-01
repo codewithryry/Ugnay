@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
@@ -12,6 +12,27 @@ export default function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next") ?? "/";
+  const invite = params.get("invite")?.trim().toUpperCase() ?? "";
+
+  /**
+   * An invite code arrives in the URL, but Google sign-in leaves the page
+   * entirely and comes back through /auth/callback — so React state cannot
+   * carry it. It is parked in localStorage instead and redeemed once there is
+   * a session, by ReferralWatcher.
+   *
+   * Storing it is safe: an invite code is public by design (it is meant to be
+   * shared), it grants nothing on its own, and every rule about who may use it
+   * is enforced server-side against the persistent identity hash.
+   */
+  useEffect(() => {
+    if (!invite) return;
+    try {
+      window.localStorage.setItem("ugnay:invite", invite);
+    } catch {
+      // A browser with storage blocked simply loses the code; the person can
+      // still enter it by hand in Invite & Earn.
+    }
+  }, [invite]);
 
   // ?mode=signup deep-links here from the signed-out landing prompt.
   const [mode, setMode] = useState<Mode>(params.get("mode") === "signup" ? "signup" : "signin");

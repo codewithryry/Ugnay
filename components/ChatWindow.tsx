@@ -121,6 +121,18 @@ export default function ChatWindow({
         >
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
           <span className="flex-1">{error}</span>
+          {errorAction === "out-of-credits" && (
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                useChatStore.getState().openCredits();
+              }}
+              className="shrink-0 rounded-lg border border-danger/30 px-2 py-1 text-[11px] font-medium text-danger transition hover:bg-danger/10"
+            >
+              Get credits
+            </button>
+          )}
           {errorAction === "change-model" && (
             <button
               type="button"

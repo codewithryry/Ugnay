@@ -19,6 +19,8 @@ import {
   withSystemPrompt,
 } from "@/lib/prompt";
 import { embedQuery, embedText, toVectorLiteral } from "@/lib/providers/embeddings";
+import { isCurrentUserAdmin } from "@/lib/admin";
+import { loadCreditRules, minimumTurnCost, priceTurn, readBalance, spend } from "@/lib/credits";
 import { loadModelControls, type ModelControls } from "@/lib/model-controls";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
@@ -405,6 +407,43 @@ export async function POST(request: NextRequest) {
       },
       { status: 503 },
     );
+  }
+
+  // Credits: the wallet has to be able to cover something before the turn
+  // starts. The real charge is taken afterwards, from the tokens the provider
+  // reported — this only keeps an empty wallet from spending what it has not
+  // got. Prices are the admin's; with every rule disabled nothing is charged
+  // and this check passes for everyone.
+  const creditRules = await loadCreditRules(supabase);
+  // An admin is entitled rather than funded: their role is read from the
+  // database on every request, and it exempts them from the wallet entirely —
+  // no pre-flight, no charge, and no enormous balance to explain. Token usage
+  // is still recorded on the message row exactly as it is for everyone.
+  const admin = await isCurrentUserAdmin();
+  const chargesCredits = !admin && creditRules.some((r) => r.enabled && r.amount > 0);
+  if (chargesCredits) {
+    // The balance is read from the wallet, never from the request: a client
+    // cannot talk its way past this. Nothing is deducted or reserved here.
+    const balance = await readBalance(supabase, user.id);
+    const minimum = minimumTurnCost(creditRules, {
+      // Read straight from the request and the account settings: both are
+      // resolved further down, but their values are already known here.
+      webSearch: body.webSearch === true,
+      knowledge: body.knowledge === true,
+      memory: Boolean(settings?.personalize_with_history),
+    });
+    if (balance <= 0 || balance < minimum) {
+      return NextResponse.json(
+        {
+          error:
+            "You do not have enough Ugnay Credits for this message. Claim your daily credits or earn more to continue.",
+          action: "out-of-credits",
+          balance,
+          required: minimum,
+        },
+        { status: 402 },
+      );
+    }
   }
 
   // Metered providers are capped per account. Counted from stored replies, so
@@ -803,6 +842,46 @@ export async function POST(request: NextRequest) {
           });
           return;
         }
+
+        // Charged once the reply is in hand, priced from the tokens the
+        // provider actually reported plus whichever extras this turn used.
+        // Provider tokens stay recorded on the message row separately: they are
+        // the usage record, credits are Ugnay's price on top of it.
+        let creditsCharged: { total: number; balance: number } | null = null;
+        if (chargesCredits) {
+          const { total, breakdown } = priceTurn(creditRules, {
+            totalTokens: usage.totalTokens,
+            promptTokens: usage.promptTokens,
+            completionTokens: usage.completionTokens,
+            webSearch,
+            knowledge: knowledgeSources.length > 0,
+            memory: Boolean(historyContext),
+          });
+          if (total > 0) {
+            const balance = await spend(supabase, user.id, total, "chat", {
+              provider: used?.provider.id ?? provider.id,
+              model: used?.model ?? model,
+              total_tokens: usage.totalTokens ?? null,
+              breakdown,
+            });
+            // A wallet that ran dry mid-turn still gets its answer — the reply
+            // is already generated, and refusing it now would waste it. But
+            // nothing was deducted, so nothing is reported: spend_credits
+            // returning null means the ledger has no row and the balance is
+            // unchanged, and claiming otherwise would show a charge that never
+            // happened.
+            creditsCharged = balance === null ? null : { total, balance };
+            // Safe, quiet, and the one line that would have caught this
+            // sooner: a priced turn that moved nothing means the wallet
+            // refused it or the call failed (spend() logs the reason).
+            if (balance === null) {
+              console.error(
+                `[ugnay] Chat charge of ${total} credits did not apply for this turn.`,
+              );
+            }
+          }
+        }
+        if (creditsCharged) send({ type: "credits", ...creditsCharged });
 
         if (temporary) {
           send({ type: "done", assistantMessageId: null, usage });

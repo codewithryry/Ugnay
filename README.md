@@ -32,6 +32,8 @@ Then run [`supabase/schema.sql`](supabase/schema.sql) in your Supabase SQL edito
 | `GROQ_API_KEY`, `GEMINI_API_KEY`, `COHERE_API_KEY` | no | Enable those providers |
 | `PUTER_API_TOKEN` | no | Enables Puter (metered) |
 | `PUTER_MAX_TOKENS`, `PUTER_HISTORY_TURNS`, `PUTER_MONTHLY_LIMIT` | no | Puter limits (default 50/month) |
+| `REWARDED_AD_SECRET`, `SUPABASE_SERVICE_ROLE_KEY` | no | Rewarded ads: the network's callback secret, and the service role that callback grants with |
+| `PAYPAL_PAYMENT_LINK`, `GCASH_NUMBER`, `GCASH_NAME`, `GCASH_QR_URL` | no | Where credit purchases are paid; a blank method is not offered |
 
 Provider keys are server-only — never prefix them with `NEXT_PUBLIC_`. A provider with no key
 reports `configured: false` and never reaches the picker.
@@ -72,6 +74,33 @@ covers model and provider availability, maintenance and priority, live health, u
 training dataset, audit of model changes, and two switches: AI maintenance (chat offline) and site
 maintenance (everything but the admin surface offline, behind `/maintenance`).
 
+**Credits.** Ugnay Credits are spent on the paid AI features and priced in Admin → Credits: chat
+per 1,000 tokens the provider actually reported, plus per-message extras for web search, knowledge
+and personalisation. Provider tokens stay recorded separately on each message — credits are Ugnay's
+price on top, not a replacement for usage tracking. Balances move only through `spend_credits` /
+`grant_credits`, which lock the wallet and append to an append-only ledger in one transaction, so a
+client cannot grant itself anything. Credits are earned from a daily claim, a streak bonus, admin
+grants, a one-off signup bonus, streak achievements at 7 and 30 days, Tasks & Rewards (one-off and repeatable actions whose
+completion is verified in the database against the account's own rows, never asserted by the
+client), and rewarded ads that the ad network verifies
+server-side at `/api/credits/ad-callback` (HMAC-signed, single-use transaction id, cooldown and
+daily limit). A rule that is disabled neither charges nor pays.
+
+One-time rewards are keyed to a persistent `credit_identities` row rather than the account: a
+SHA-256 of the OAuth provider's stable subject (or, for a password account, of the normalised
+email), stored hashed and holding nothing else, so deleting and recreating an account cannot claim
+the signup bonus or a one-time task twice. Admins are *entitled* rather than funded — the chat and
+speech routes read `profiles.role` server-side and skip the wallet entirely, so no admin needs a
+large balance and no client flag can grant the exemption.
+
+**Buying credits.** `/credits` sells configurable packages, paid by PayPal or GCash. Both are
+**manually verified**: the store shows the configured destination, the payer submits their reference
+number and optional receipt, and the order sits at *pending verification* until an admin approves it
+in Admin → Payments. Approval is the only path that grants purchased credits — through the same
+`award_credits` ledger, latched on the order's `granted_at` so a repeat approval pays nothing. The
+provider layer in `lib/billing.ts` is shaped so a real PayPal API integration can be added later
+without changing the order table or the granting path. Free earning is unaffected.
+
 **Knowledge and memory.** Uploaded documents are chunked and embedded (Cohere, 1,024 dims); relevant
 passages are recalled per turn and the files are named under the reply. With Data Controls →
 personalise with history on, past messages are recalled the same way. Both are opt-in.
@@ -88,7 +117,8 @@ app/
   admin/                 Admin dashboard (admin-only)
   api/chat/              Provider routing, NDJSON streaming, titles, memory, knowledge
   api/models/            Which providers/models are offerable
-  api/admin/             Model controls, maintenance settings, overview totals
+  api/admin/             Model controls, maintenance settings, credit rules, overview totals
+  api/credits/           Wallet, daily claim, tasks, orders, rewarded-ad callback
   api/knowledge|export|feedback|refine|speech|workflows/
   auth/callback/         Supabase code → session
   maintenance/ login/ search/ faq/ release-notes/ terms/ privacy/ upgrade/ s/[slug]/
@@ -96,6 +126,9 @@ components/              Sidebar, ChatWindow, Composer, ModelSelector, SettingsP
 lib/providers/           Provider interface + OpenRouter, Groq, Gemini, Cohere, Puter, embeddings
 lib/supabase/            Browser, server and middleware clients
 lib/model-controls.ts    Admin overrides read by routing
+lib/credits.ts           Credit pricing, spending and rewards
+lib/billing.ts           Payment methods for buying credits (manually verified)
+lib/rewarded-ads.ts      Server-side verification of an ad network callback
 store/chatStore.ts       Zustand: chats, projects, messages, streaming, settings
 supabase/schema.sql      Tables, functions, triggers, RLS
 ```
