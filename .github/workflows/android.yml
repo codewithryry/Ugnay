@@ -26,10 +26,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Node 22 LTS, because the Capacitor CLI declares engines >=22.0.0 and
+      # refuses to run on anything older. This step is first, so every later
+      # step — npm ci, the web build, cap sync and Gradle — uses it.
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Set up Java
@@ -66,6 +69,16 @@ jobs:
       # release build should be built from.
       - name: Install dependencies
         run: npm ci
+
+      # The toolchain this build actually got. `cap --version` is the one that
+      # matters: the Capacitor CLI requires Node >=22, and reporting it here
+      # means a version mismatch is visible before `cap sync` fails on it.
+      - name: Report tool versions
+        run: |
+          echo "node    $(node --version)"
+          echo "npm     $(npm --version)"
+          echo "cap     $(npx cap --version)"
+          echo "java    $(java -version 2>&1 | head -1)"
 
       # The version the APK reports and is named after. A release uses its tag
       # (v1.0.0 -> 1.0.0); a manual run uses the input, or falls back to the
