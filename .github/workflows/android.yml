@@ -84,6 +84,32 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Building Ugnay AI $VERSION"
 
+      # An unset secret expands to an empty string rather than failing, so a
+      # missing one would otherwise surface as a build error several steps
+      # later. This says plainly which secret is absent, without printing any
+      # value: only whether each one is set.
+      - name: Check the build secrets are set
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          missing=0
+          for name in SUPABASE_URL SUPABASE_KEY; do
+            if [ -z "${!name}" ]; then
+              case "$name" in
+                SUPABASE_URL) echo "::error::Repository secret NEXT_PUBLIC_SUPABASE_URL is not set." ;;
+                SUPABASE_KEY) echo "::error::Repository secret NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY is not set." ;;
+              esac
+              missing=1
+            fi
+          done
+          if [ "$missing" = "1" ]; then
+            echo "Add them under Settings -> Secrets and variables -> Actions."
+            echo "Both values are in your local .env (Supabase -> Project Settings -> API)."
+            exit 1
+          fi
+          echo "Both Supabase build secrets are set."
+
       # The deployed site the app calls for chat, knowledge and everything else
       # server-side. It is a public URL, not a secret, but it lives in a
       # repository variable so a fork can point at its own deployment.
