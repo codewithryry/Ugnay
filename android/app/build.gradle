@@ -1,5 +1,30 @@
 apply plugin: 'com.android.application'
 
+/**
+ * Release signing.
+ *
+ * Android refuses to install an unsigned APK, so a release build needs a key.
+ * The keystore is never committed: CI writes it from a secret before building,
+ * and a local release build reads it from android/keystore.properties (also
+ * untracked). Without either, the release build still runs and simply produces
+ * an unsigned APK, so a contributor without the key is not blocked — only the
+ * published artifact needs to be signed.
+ */
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+def hasKeystore = false
+
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+    hasKeystore = true
+} else if (System.getenv("ANDROID_KEYSTORE_PATH")) {
+    keystoreProperties.setProperty("storeFile", System.getenv("ANDROID_KEYSTORE_PATH"))
+    keystoreProperties.setProperty("storePassword", System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: "")
+    keystoreProperties.setProperty("keyAlias", System.getenv("ANDROID_KEY_ALIAS") ?: "")
+    keystoreProperties.setProperty("keyPassword", System.getenv("ANDROID_KEY_PASSWORD") ?: "")
+    hasKeystore = true
+}
+
 android {
     namespace = "com.ugnayai.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +32,16 @@ android {
         applicationId "com.ugnayai.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        /**
+         * Set from the release tag by CI (APP_VERSION_NAME / APP_VERSION_CODE),
+         * so a published APK reports the version it was released under rather
+         * than a placeholder. The defaults are what a local build gets.
+         *
+         * versionCode must increase for Android to treat a build as an update,
+         * so CI derives it from the run number.
+         */
+        versionCode System.getenv("APP_VERSION_CODE") ? System.getenv("APP_VERSION_CODE").toInteger() : 1
+        versionName System.getenv("APP_VERSION_NAME") ?: "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +49,24 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasKeystore) {
+            release {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasKeystore) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

@@ -18,3 +18,5 @@ android/local.properties
 *.keystore
 *.jks
 release-signing.properties
+android/keystore.properties
+keystore.properties
