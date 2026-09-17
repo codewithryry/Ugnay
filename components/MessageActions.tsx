@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TEMPORARY_CHAT_ID, useChatStore } from "@/store/chatStore";
+import { apiFetch } from "@/lib/api";
 
 type Feedback = "up" | "down" | null;
 
@@ -103,7 +104,7 @@ export default function MessageActions({
     }
     setSpeech("loading");
     try {
-      const res = await fetch("/api/speech", {
+      const res = await apiFetch("/api/speech", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: content }),

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Check, Clock, Coins, Loader2, Lock, QrCode, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 
 interface Pack {
   key: string;
@@ -118,7 +119,7 @@ export default function CreditsStore() {
   const [proof, setProof] = useState<File | null>(null);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/credits/orders", { cache: "no-store" });
+    const res = await apiFetch("/api/credits/orders", { cache: "no-store" });
     if (!res.ok) {
       setError("Could not load the store.");
       setLoading(false);
@@ -140,7 +141,7 @@ export default function CreditsStore() {
   const usable = methods.filter((m) => m.configured);
 
   async function post(body: Record<string, unknown>) {
-    const res = await fetch("/api/credits/orders", {
+    const res = await apiFetch("/api/credits/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

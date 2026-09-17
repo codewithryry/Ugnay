@@ -20,6 +20,7 @@ import MaintenanceWatcher from "./MaintenanceWatcher";
 import { applyTheme } from "@/lib/theme";
 import { DEFAULT_CHAT_TITLE } from "@/lib/utils";
 import { TEMPORARY_CHAT_ID, useChatStore } from "@/store/chatStore";
+import { apiFetch } from "@/lib/api";
 
 export interface CurrentUser {
   userId: string;
@@ -88,7 +89,7 @@ export default function ChatApp(props: {
     }
 
     void (async () => {
-      const res = await fetch("/api/credits/referrals", {
+      const res = await apiFetch("/api/credits/referrals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code }),

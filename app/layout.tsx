@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import "./globals.css";
+import NativeBridge from "@/components/NativeBridge";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
 const spaceGrotesk = Space_Grotesk({
@@ -117,7 +118,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body className="h-full overflow-x-hidden font-sans">{children}</body>
+      <body className="h-full overflow-x-hidden font-sans">
+        {/*
+          Native-only behaviour (hardware back button, OAuth deep links).
+          Renders nothing and does nothing in a browser, so the web app is
+          unaffected by its presence.
+        */}
+        <NativeBridge />
+        {children}
+      </body>
     </html>
   );
 }

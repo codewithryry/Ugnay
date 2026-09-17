@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import { Check, Columns3, Loader2, PanelLeft, Square, X } from "lucide-react";
 import { useChatStore } from "@/store/chatStore";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 
 const MIN_MODELS = 2;
 const MAX_MODELS = 4;
@@ -102,7 +103,7 @@ export default function ModelCompareView({ onClose }: { onClose: () => void }) {
       setColumns((all) => all.map((c) => (c.key === column.key ? { ...c, ...update } : c)));
 
     try {
-      const res = await fetch("/api/chat", {
+      const res = await apiFetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // Temporary: nothing is persisted and no chat row is touched.

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2, Search, X } from "lucide-react";
 import Modal from "./Modal";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 
 interface WalletRow {
   user_id: string;
@@ -152,7 +153,7 @@ export default function AdminWalletsSection() {
     setAmount("");
     setReason("");
     setError(null);
-    const res = await fetch(`/api/admin/wallets?user=${row.user_id}`, { cache: "no-store" });
+    const res = await apiFetch(`/api/admin/wallets?user=${row.user_id}`, { cache: "no-store" });
     if (!res.ok) {
       setError("Could not load that wallet.");
       return;
@@ -169,7 +170,7 @@ export default function AdminWalletsSection() {
     setGranting(true);
     setError(null);
     setNote(null);
-    const res = await fetch("/api/admin/wallets", {
+    const res = await apiFetch("/api/admin/wallets", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, userId: open.user_id, amount: Number(amount), note: reason }),
@@ -201,7 +202,7 @@ export default function AdminWalletsSection() {
     setDeleting(true);
     setError(null);
     setNote(null);
-    const res = await fetch("/api/admin/wallets", {
+    const res = await apiFetch("/api/admin/wallets", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: confirming.user_id }),

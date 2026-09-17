@@ -5,6 +5,7 @@ import { Check, Clock, Copy, Gift, Loader2, Share2, X } from "lucide-react";
 import Modal from "./Modal";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/store/chatStore";
+import { apiFetch } from "@/lib/api";
 
 interface Referral {
   id: string;
@@ -97,7 +98,7 @@ export default function ReferralModal({
   const refreshCredits = useChatStore((s) => s.refreshCredits);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/credits/referrals", { cache: "no-store" });
+    const res = await apiFetch("/api/credits/referrals", { cache: "no-store" });
     const body = await res.json().catch(() => null);
     if (!res.ok) {
       setError(body?.error ?? "Could not load your invites.");
@@ -127,7 +128,7 @@ export default function ReferralModal({
   async function createCode() {
     setCreating(true);
     setError(null);
-    const res = await fetch("/api/credits/referrals", {
+    const res = await apiFetch("/api/credits/referrals", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "code" }),
@@ -185,7 +186,7 @@ export default function ReferralModal({
     setRedeeming(true);
     setError(null);
     setNote(null);
-    const res = await fetch("/api/credits/referrals", {
+    const res = await apiFetch("/api/credits/referrals", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "accept", code: code.trim() }),

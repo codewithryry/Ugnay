@@ -6,6 +6,7 @@ import { Check, Coins, Loader2, PlayCircle } from "lucide-react";
 import Modal from "./Modal";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/store/chatStore";
+import { apiFetch } from "@/lib/api";
 
 interface Transaction {
   id: string;
@@ -124,7 +125,7 @@ export default function CreditsModal({ open, onClose }: { open: boolean; onClose
 
   const load = useCallback(async () => {
     setError(null);
-    const res = await fetch("/api/credits", { cache: "no-store" });
+    const res = await apiFetch("/api/credits", { cache: "no-store" });
     if (!res.ok) {
       setError("Could not load your credits.");
       setLoading(false);
@@ -132,7 +133,7 @@ export default function CreditsModal({ open, onClose }: { open: boolean; onClose
     }
     setData(await res.json());
 
-    const tasksRes = await fetch("/api/credits/tasks", { cache: "no-store" });
+    const tasksRes = await apiFetch("/api/credits/tasks", { cache: "no-store" });
     setTasks(tasksRes.ok ? ((await tasksRes.json()).tasks ?? []) : []);
     setLoading(false);
   }, []);
@@ -147,7 +148,7 @@ export default function CreditsModal({ open, onClose }: { open: boolean; onClose
     setClaiming(true);
     setError(null);
     setNote(null);
-    const res = await fetch("/api/credits/claim", { method: "POST" });
+    const res = await apiFetch("/api/credits/claim", { method: "POST" });
     const body = await res.json().catch(() => null);
     if (!res.ok) {
       setError(body?.error ?? "Could not claim your credits.");
@@ -169,7 +170,7 @@ export default function CreditsModal({ open, onClose }: { open: boolean; onClose
     setClaimingTask(key);
     setError(null);
     setNote(null);
-    const res = await fetch("/api/credits/tasks", {
+    const res = await apiFetch("/api/credits/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key }),

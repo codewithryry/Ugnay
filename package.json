@@ -7,9 +7,22 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:android:web": "node scripts/build-android-web.mjs",
+    "android:assets": "node scripts/generate-android-assets.mjs",
+    "android:sync": "npm run build:android:web && npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:apk:debug": "npm run android:sync && node scripts/gradle.mjs assembleDebug",
+    "android:apk": "npm run android:sync && node scripts/gradle.mjs assembleRelease"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/keyboard": "^8.0.5",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3",
     "@openrouter/sdk": "^1.2.44",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.45.4",
@@ -23,6 +36,7 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
     "@types/node": "^20.16.11",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",

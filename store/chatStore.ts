@@ -6,6 +6,7 @@ import { DEFAULT_CHAT_TITLE, titleFromMessage } from "@/lib/utils";
 import { BUILTIN_PRESETS } from "@/lib/presets";
 import { isUnrecoverableAuthError } from "@/lib/supabase/auth-errors";
 import type { Chat, Message, Preset, Project, UserSettings } from "@/types/db";
+import { apiFetch } from "@/lib/api";
 
 export interface ModelInfoLite {
   id: string;
@@ -305,7 +306,7 @@ async function runSend(
   abortController = new AbortController();
 
   try {
-    const res = await fetch("/api/chat", {
+    const res = await apiFetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(
@@ -507,7 +508,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         .order("updated_at", { ascending: false }),
       supabase.from("projects").select("*").order("created_at", { ascending: true }),
       supabase.from("user_settings").select("*").eq("user_id", userId).maybeSingle(),
-      fetch("/api/models")
+      apiFetch("/api/models")
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
     ]);
@@ -862,7 +863,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   async refreshCredits() {
-    const data = await fetch("/api/credits")
+    const data = await apiFetch("/api/credits")
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null);
     if (typeof data?.wallet?.balance !== "number") return;
@@ -879,7 +880,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // Admin can disable a model while someone is chatting. Only the list of
     // choices changes here — no chat, message or setting is touched, so the
     // conversation on screen is untouched too.
-    const data = await fetch("/api/models")
+    const data = await apiFetch("/api/models")
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null);
     if (!data?.providers) return;

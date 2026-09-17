@@ -17,6 +17,7 @@ import { describeDbError, isMissingDbObject } from "@/lib/supabase/errors";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/store/chatStore";
 import type { Workflow, WorkflowStep } from "@/types/db";
+import { apiFetch } from "@/lib/api";
 
 /** Shown when the table this feature needs is not in the database yet. */
 const MIGRATION_HINT =
@@ -310,7 +311,7 @@ function WorkflowEditor({
     abortRef.current = new AbortController();
 
     try {
-      const res = await fetch("/api/workflows/run", {
+      const res = await apiFetch("/api/workflows/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workflowId: workflow.id, input }),

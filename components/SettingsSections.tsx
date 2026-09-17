@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import MemoryModal from "./MemoryModal";
 import { useChatStore } from "@/store/chatStore";
 import type { Preset } from "@/types/db";
+import { apiFetch } from "@/lib/api";
 
 /**
  * The settings controls shared by both settings shells.
@@ -376,7 +377,7 @@ export function DataSection() {
     setError(null);
     setNotice(null);
     try {
-      const res = await fetch("/api/export");
+      const res = await apiFetch("/api/export");
       if (!res.ok) {
         const detail = await res.json().catch(() => null);
         throw new Error(detail?.error ?? `Export failed (${res.status}).`);

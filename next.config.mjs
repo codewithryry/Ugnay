@@ -9,6 +9,23 @@ const supabaseOrigin = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseSocket = supabaseOrigin.replace(/^https:/, "wss:");
 
 /**
+ * Static export for the Android build.
+ *
+ * `next build` with this set emits plain HTML/JS into `out/`, which is what
+ * Capacitor copies into the APK. It drops the server half of the app — route
+ * handlers, middleware and the two server-rendered pages — so it is only ever
+ * used for the Android bundle. The deployed web build leaves it unset and is
+ * unchanged, server and all.
+ */
+const isAndroidExport = process.env.BUILD_TARGET === "android";
+
+/**
+ * The deployed API the Android bundle calls. Also allowed in connect-src, so a
+ * browser opening a non-Android build against a remote API is not blocked.
+ */
+const apiOrigin = process.env.NEXT_PUBLIC_API_ORIGIN ?? "";
+
+/**
  * Script and style sources still need 'unsafe-inline': Next injects inline
  * hydration scripts, the layout runs an inline script to apply the saved theme
  * before first paint, and Tailwind plus the syntax highlighter emit inline
@@ -23,7 +40,7 @@ const contentSecurityPolicy = [
   "font-src 'self' data:",
   // Synthesised speech is played back from a blob URL.
   "media-src 'self' blob:",
-  `connect-src 'self' ${supabaseOrigin} ${supabaseSocket}${isProduction ? "" : " ws: http://localhost:*"}`,
+  `connect-src 'self' ${supabaseOrigin} ${supabaseSocket}${apiOrigin ? ` ${apiOrigin}` : ""}${isProduction ? "" : " ws: http://localhost:*"}`,
   "worker-src 'self' blob:",
   "manifest-src 'self'",
   "object-src 'none'",
@@ -62,6 +79,20 @@ const nextConfig = {
   reactStrictMode: true,
   // Drops the X-Powered-By: Next.js banner.
   poweredByHeader: false,
+  /**
+   * Emits .next/standalone: a self-contained server with only the packages the
+   * build actually traced, which is what the Dockerfile copies into the final
+   * image instead of the whole node_modules tree. Ignored by `next dev` and by
+   * `next start`, so local development is unaffected.
+   */
+  // "export" for the Android bundle; "standalone" is what the Dockerfile and
+  // the Vercel deployment expect, and stays the default.
+  output: isAndroidExport ? "export" : "standalone",
+  /**
+   * The exported bundle is loaded from a file:// style origin inside the APK,
+   * where Next's default image optimiser (a server feature) cannot run.
+   */
+  ...(isAndroidExport ? { images: { unoptimized: true } } : {}),
   experimental: {
     /**
      * Client-side Router Cache for dynamic pages. The default (0) refetches

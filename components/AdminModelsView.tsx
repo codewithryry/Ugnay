@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 
 /** Mirrors the payload of GET /api/admin/models. */
 type Status = "available" | "disabled" | "maintenance";
@@ -73,7 +74,7 @@ function useAdminModels() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/admin/models", { cache: "no-store" });
+    const res = await apiFetch("/api/admin/models", { cache: "no-store" });
     if (!res.ok) {
       setError("Could not load the models.");
       setLoading(false);
@@ -97,7 +98,7 @@ function useAdminModels() {
     async (path: "PATCH" | "POST", body: Record<string, unknown>) => {
       setBusy(true);
       setError(null);
-      const res = await fetch("/api/admin/models", {
+      const res = await apiFetch("/api/admin/models", {
         method: path,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

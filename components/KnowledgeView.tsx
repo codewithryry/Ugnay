@@ -17,6 +17,7 @@ import { ACCEPT_ATTRIBUTE, SUPPORTED_TYPES, typeFor } from "@/lib/knowledge-type
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/store/chatStore";
 import type { KnowledgeFile } from "@/types/db";
+import { apiFetch } from "@/lib/api";
 
 /** Shown when the tables this feature needs are not in the database yet. */
 const MIGRATION_HINT =
@@ -119,7 +120,7 @@ export default function KnowledgeView() {
       form.append("file", file);
 
       try {
-        const res = await fetch("/api/knowledge", { method: "POST", body: form });
+        const res = await apiFetch("/api/knowledge", { method: "POST", body: form });
         const payload = await res.json().catch(() => null);
 
         if (!res.ok) {
@@ -150,7 +151,7 @@ export default function KnowledgeView() {
     setNotice(null);
 
     try {
-      const res = await fetch("/api/knowledge", {
+      const res = await apiFetch("/api/knowledge", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: file.id }),
@@ -178,7 +179,7 @@ export default function KnowledgeView() {
     const previous = files;
     setFiles((all) => all.filter((f) => f.id !== file.id));
 
-    const res = await fetch(`/api/knowledge?id=${encodeURIComponent(file.id)}`, {
+    const res = await apiFetch(`/api/knowledge?id=${encodeURIComponent(file.id)}`, {
       method: "DELETE",
     });
     if (!res.ok) {

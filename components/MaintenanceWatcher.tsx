@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { apiFetch } from "@/lib/api";
 
 /** Poll interval, both ways. Slow on purpose: this is a background check. */
 const EVERY_MS = 30_000;
@@ -27,7 +28,7 @@ export default function MaintenanceWatcher({
       // A hidden tab neither needs the check nor should pay for it.
       if (document.visibilityState !== "visible") return;
       try {
-        const res = await fetch("/api/maintenance", { cache: "no-store" });
+        const res = await apiFetch("/api/maintenance", { cache: "no-store" });
         if (!res.ok) return;
         const { maintenance } = await res.json();
         if (Boolean(maintenance) === offline) return;

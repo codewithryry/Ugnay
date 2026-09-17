@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 
 interface Rule {
   key: string;
@@ -63,7 +64,7 @@ export default function AdminCreditsSection() {
   const [amount, setAmount] = useState("");
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/admin/credits", { cache: "no-store" });
+    const res = await apiFetch("/api/admin/credits", { cache: "no-store" });
     if (!res.ok) {
       setError("Could not load the credit rules.");
       setLoading(false);
@@ -89,7 +90,7 @@ export default function AdminCreditsSection() {
   async function saveRule(key: string, patch: Record<string, unknown>) {
     setBusy(true);
     setError(null);
-    const res = await fetch("/api/admin/credits", {
+    const res = await apiFetch("/api/admin/credits", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key, ...patch }),
@@ -105,7 +106,7 @@ export default function AdminCreditsSection() {
   async function saveLimit(next: number) {
     setBusy(true);
     setError(null);
-    const res = await fetch("/api/admin/credits", {
+    const res = await apiFetch("/api/admin/credits", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ maxCirculation: next }),
@@ -120,7 +121,7 @@ export default function AdminCreditsSection() {
     setBusy(true);
     setError(null);
     setNote(null);
-    const res = await fetch("/api/admin/credits", {
+    const res = await apiFetch("/api/admin/credits", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, amount: Number(amount) }),

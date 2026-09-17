@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { OAUTH_REDIRECT, isNative, openOAuth } from "@/lib/native";
 
 type Mode = "signin" | "signup";
 
@@ -52,12 +53,32 @@ export default function LoginForm() {
     setError(null);
     setNotice(null);
     const supabase = createClient();
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+    /**
+     * In the browser this stays exactly as it was: Supabase returns to
+     * /auth/callback on this origin, which exchanges the code.
+     *
+     * Inside the Android app there is no such origin — the UI is served from
+     * the APK — so sign-in opens in the system browser and Supabase returns
+     * through the app's custom scheme, which NativeBridge picks up. Skipping
+     * the browser redirect also means `skipBrowserRedirect`, because the
+     * WebView must not navigate away from the app.
+     */
+    const native = isNative();
+    const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+        redirectTo: native
+          ? OAUTH_REDIRECT
+          : `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+        skipBrowserRedirect: native,
       },
     });
+
+    if (native && !oauthError && data?.url) {
+      await openOAuth(data.url);
+      setGooglePending(false);
+      return;
+    }
     if (oauthError) {
       console.error("[ugnay] Google sign-in failed:", oauthError);
       setError(oauthError.message || "Could not start Google sign-in. Please try again.");

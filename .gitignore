@@ -7,3 +7,14 @@ out
 *.tsbuildinfo
 next-env.d.ts
 .next-verify
+
+# Capacitor / Android build
+.android-build
+android/app/build
+android/build
+android/.gradle
+android/app/src/main/assets/public
+android/local.properties
+*.keystore
+*.jks
+release-signing.properties

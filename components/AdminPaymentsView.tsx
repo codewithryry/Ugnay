@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 
 interface Order {
   id: string;
@@ -80,8 +81,8 @@ export default function AdminPaymentsSection() {
 
   const load = useCallback(async () => {
     const [ordersRes, methodsRes] = await Promise.all([
-      fetch("/api/admin/orders", { cache: "no-store" }),
-      fetch("/api/admin/payment-methods", { cache: "no-store" }),
+      apiFetch("/api/admin/orders", { cache: "no-store" }),
+      apiFetch("/api/admin/payment-methods", { cache: "no-store" }),
     ]);
     if (!ordersRes.ok) {
       setError("Could not load the payments.");
@@ -108,7 +109,7 @@ export default function AdminPaymentsSection() {
     setBusy(id);
     setError(null);
     setNote(null);
-    const res = await fetch("/api/admin/orders", {
+    const res = await apiFetch("/api/admin/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderId: id, decision, note: notes[id] ?? "" }),
@@ -137,7 +138,7 @@ export default function AdminPaymentsSection() {
     setError(null);
     setNote(null);
     const draft = drafts[method.id] ?? {};
-    const res = await fetch("/api/admin/payment-methods", {
+    const res = await apiFetch("/api/admin/payment-methods", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -163,7 +164,7 @@ export default function AdminPaymentsSection() {
     const form = new FormData();
     form.append("id", method.id);
     form.append("file", file);
-    const res = await fetch("/api/admin/payment-methods", { method: "POST", body: form });
+    const res = await apiFetch("/api/admin/payment-methods", { method: "POST", body: form });
     const body = await res.json().catch(() => null);
     if (!res.ok || !body?.ok) setError(body?.error ?? "Could not upload that image.");
     else setNote(`${method.label} QR code updated.`);

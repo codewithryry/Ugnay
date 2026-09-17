@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { apiFetch } from "@/lib/api";
 
 /**
  * Browser dictation via the Web Speech API — no dependency, no audio upload.
@@ -63,7 +64,7 @@ export function useDictation({
 
       setRefining(true);
       try {
-        const res = await fetch("/api/refine", {
+        const res = await apiFetch("/api/refine", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text: clean }),

@@ -26,6 +26,7 @@ import AdminModelsSection, {
   AdminHealthSection,
 } from "./AdminModelsView";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 
 /** Shape of GET /api/admin/overview — every number comes from the database. */
 interface Overview {
@@ -209,7 +210,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     void (async () => {
-      const res = await fetch("/api/admin/overview", { cache: "no-store" });
+      const res = await apiFetch("/api/admin/overview", { cache: "no-store" });
       if (!res.ok) {
         setError("Could not load the dashboard figures.");
         return;
@@ -218,7 +219,7 @@ export default function AdminDashboard() {
     })();
 
     void (async () => {
-      const res = await fetch("/api/admin/models", { cache: "no-store" });
+      const res = await apiFetch("/api/admin/models", { cache: "no-store" });
       if (res.ok) setModels(await res.json());
     })();
   }, []);

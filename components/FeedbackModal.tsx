@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import Modal from "./Modal";
+import { apiFetch } from "@/lib/api";
 
 /**
  * What the visitor picks, and the `kind` each one is stored as. The table's
@@ -52,7 +53,7 @@ export default function FeedbackModal({
     try {
       // No selection is still valid feedback; it is filed as "other".
       const kind = REPORT_TYPES.find((t) => t.id === type)?.kind ?? "other";
-      const response = await fetch("/api/feedback", {
+      const response = await apiFetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ kind, message: body }),
