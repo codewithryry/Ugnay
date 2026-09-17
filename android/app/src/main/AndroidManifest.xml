@@ -34,14 +34,20 @@
                 finishes; NativeBridge reads the tokens off the URL and
                 establishes the session.
 
-                The same value must be added as a Redirect URL in the Supabase
-                dashboard, or Supabase will refuse to redirect here.
+                This must match OAUTH_REDIRECT in lib/native.ts, and the same
+                value must be added as a Redirect URL in the Supabase
+                dashboard, or Supabase will refuse to redirect here:
+
+                    ugnay://auth/callback
             -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="com.ugnayai.app" android:host="auth-callback" />
+                <data
+                    android:scheme="ugnay"
+                    android:host="auth"
+                    android:path="/callback" />
             </intent-filter>
 
         </activity>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   BarChart3,
   Coins,
@@ -360,8 +361,15 @@ export default function AccountMenu({
                     Feedback
                   </button>
 
+                  {/*
+                    Link, not a plain anchor. A bare <a href="/faq"> asks the
+                    server for that path, which the browser resolves to
+                    faq.html. Inside the APK there is no server: the pages are
+                    files next to index.html, and the request 404s. Link routes
+                    on the client, which works in both.
+                  */}
                   {HELP_ITEMS.map((item) => (
-                    <a
+                    <Link
                       key={item.key}
                       role="menuitem"
                       href={item.href}
@@ -370,7 +378,7 @@ export default function AccountMenu({
                     >
                       <item.icon className="h-4 w-4 text-neutral-500" aria-hidden />
                       {item.label}
-                    </a>
+                    </Link>
                   ))}
 
                   <div className="my-1 h-px bg-ink-700" role="none" />
@@ -385,7 +393,7 @@ export default function AccountMenu({
             </div>
 
             {UPGRADE_URL ? (
-              <a
+              <Link
                 role="menuitem"
                 href={UPGRADE_URL}
                 onClick={close}
@@ -394,7 +402,7 @@ export default function AccountMenu({
               >
                 <Sparkles className="h-4 w-4 text-neutral-500" aria-hidden />
                 Upgrade plan
-              </a>
+              </Link>
             ) : (
               <span role="menuitem" aria-disabled className={disabledClass}>
                 <Sparkles className="h-4 w-4" aria-hidden />

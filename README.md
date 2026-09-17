@@ -117,7 +117,9 @@ the UI, which makes a mistyped one possible to spot. The workflow reads a secret
 back to a variable of the same name.
 
 Set the `NEXT_PUBLIC_API_ORIGIN` variable to point a fork at its own deployment. For Google sign-in
-from the app, add `com.ugnayai.app://auth-callback` to Supabase → Authentication → URL Configuration.
+from the app, add `ugnay://auth/callback` to Supabase → Authentication → URL Configuration. Google
+Cloud keeps the Supabase callback as its redirect URI — the app's scheme is registered with
+Supabase, not with Google.
 
 The workflow verifies the signature with `apksigner` before uploading anything, so an unsigned build
 fails rather than producing a download that cannot be installed.

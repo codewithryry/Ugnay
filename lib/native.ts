@@ -29,8 +29,8 @@ export const isNative = () => Capacitor.isNativePlatform();
  * It must match the intent filter in AndroidManifest.xml and be listed as a
  * Redirect URL in the Supabase dashboard.
  */
-export const DEEP_LINK_SCHEME = "com.ugnayai.app";
-export const OAUTH_REDIRECT = `${DEEP_LINK_SCHEME}://auth-callback`;
+export const DEEP_LINK_SCHEME = "ugnay";
+export const OAUTH_REDIRECT = `${DEEP_LINK_SCHEME}://auth/callback`;
 
 /**
  * Opens an OAuth consent flow in the system browser.

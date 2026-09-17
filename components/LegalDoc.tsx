@@ -12,6 +12,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+import OutboundLink from "./ExternalLink";
 import { LEGAL_UPDATED, type LegalDocument } from "@/lib/legal";
 import { cn } from "@/lib/utils";
 import { useHasSession } from "./useHasSession";
@@ -274,10 +275,8 @@ export default function LegalDoc({
                   <ul className="mt-5 max-w-2xl space-y-2">
                     {section.links.map((link) => (
                       <li key={link.href}>
-                        <a
+                        <OutboundLink
                           href={link.href}
-                          target="_blank"
-                          rel="noopener noreferrer"
                           className="group flex items-center gap-3 rounded-xl border border-ink-800 bg-ink-900 px-4 py-3 transition hover:border-ink-700"
                         >
                           <span className="min-w-0 flex-1">
@@ -294,7 +293,7 @@ export default function LegalDoc({
                             className="h-3.5 w-3.5 shrink-0 text-neutral-600 transition group-hover:text-neutral-400"
                             aria-hidden
                           />
-                        </a>
+                        </OutboundLink>
                       </li>
                     ))}
                   </ul>
