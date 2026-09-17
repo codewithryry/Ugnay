@@ -20,3 +20,4 @@ android/local.properties
 release-signing.properties
 android/keystore.properties
 keystore.properties
+ugnay-keystore-base64.txt
