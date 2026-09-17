@@ -38,8 +38,29 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      # `packages: ''` is deliberate. The action's default package list still
+      # includes `tools`, the legacy SDK Tools package Google removed from the
+      # repository — sdkmanager cannot resolve it and exits 1, which is the
+      # "Failed to find package 'tools'" failure. Passing an empty list skips
+      # that default install; the next step then installs exactly what this
+      # project builds against.
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+
+      # Exactly what this project builds against:
+      #   platforms;android-36  - compileSdk/targetSdk 36 (android/variables.gradle)
+      #   build-tools;35.0.0    - AGP 8.13's default and minimum revision
+      #   platform-tools        - adb and the packaging tools
+      # Gradle 8.14.3 and JDK 21 are both above AGP 8.13's minimums (8.13, 17).
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;35.0.0"
+          sdkmanager --list_installed
 
       # `npm ci` installs exactly what package-lock.json pins, which is what a
       # release build should be built from.
