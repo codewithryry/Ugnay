@@ -159,12 +159,41 @@ jobs:
         id: keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
             echo "No ANDROID_KEYSTORE_BASE64 secret set - the APK will be unsigned."
             exit 0
           fi
+
+          # All four are needed together. Decoding the keystore while a
+          # password is missing produces a confusing Gradle failure much later,
+          # so say which one is absent now. Only presence is reported.
+          missing=""
+          [ -z "$KEYSTORE_PASSWORD" ] && missing="$missing ANDROID_KEYSTORE_PASSWORD"
+          [ -z "$KEY_ALIAS" ]         && missing="$missing ANDROID_KEY_ALIAS"
+          [ -z "$KEY_PASSWORD" ]      && missing="$missing ANDROID_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is set but these are not:$missing"
+            exit 1
+          fi
+
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+
+          # A truncated or mis-pasted secret decodes to something that is not a
+          # keystore. keytool -list reads it with the password, which checks
+          # the file and the password together before Gradle depends on them.
+          if ! keytool -list -keystore "$RUNNER_TEMP/release.keystore" \
+              -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" > /dev/null 2>&1; then
+            echo "::error::The keystore could not be read with the given password and alias."
+            echo "Check ANDROID_KEYSTORE_BASE64 is the whole base64 string (base64 -w0),"
+            echo "and that ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_ALIAS match the key."
+            rm -f "$RUNNER_TEMP/release.keystore"
+            exit 1
+          fi
+
           echo "path=$RUNNER_TEMP/release.keystore" >> "$GITHUB_OUTPUT"
           echo "Signing keystore ready."
 
@@ -185,26 +214,79 @@ jobs:
         working-directory: android
 
       # Gradle's output name is fixed; the asset is named for the release.
-      - name: Name the APK
+      #
+      # Whether the APK is signed is decided by apksigner, not by the filename.
+      # Gradle names its output app-release.apk once a signingConfig is
+      # attached, but that name alone does not prove the signature is present
+      # and valid — and this is what decides whether the file is published.
+      - name: Name and verify the APK
         id: apk
         run: |
-          SRC=android/app/build/outputs/apk/release/app-release.apk
+          RELEASE=android/app/build/outputs/apk/release/app-release.apk
           UNSIGNED=android/app/build/outputs/apk/release/app-release-unsigned.apk
-          if [ -f "$SRC" ]; then
-            FOUND="$SRC"; SIGNED=true
+
+          if [ -f "$RELEASE" ]; then
+            FOUND="$RELEASE"
           elif [ -f "$UNSIGNED" ]; then
-            FOUND="$UNSIGNED"; SIGNED=false
+            FOUND="$UNSIGNED"
           else
             echo "::error::No APK was produced. Check the Gradle output above."
             ls -R android/app/build/outputs 2>/dev/null || true
             exit 1
           fi
+
           NAME="Ugnay-AI-v${{ steps.version.outputs.version }}.apk"
           cp "$FOUND" "$NAME"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
-          echo "signed=$SIGNED" >> "$GITHUB_OUTPUT"
+
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+          if [ -z "$APKSIGNER" ]; then
+            echo "::error::apksigner not found in the Android SDK."
+            exit 1
+          fi
+
+          # `verify` exits non-zero when the APK carries no valid signature.
+          # It prints the certificate, never the key or any password.
+          if "$APKSIGNER" verify --print-certs "$NAME"; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+            echo "The APK is signed."
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "The APK is NOT signed."
+          fi
+
           ls -la "$NAME"
 
+      # The keystore is removed as soon as the build no longer needs it, and
+      # `always()` so an earlier failure does not leave it on the runner.
+      # A hosted runner is discarded after the job, but a self-hosted one is
+      # not, and the file is the signing key itself.
+      - name: Remove the signing keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.keystore"
+
+      # An unsigned APK cannot be installed, so it is neither published nor
+      # offered as an artifact someone might mistake for a working download.
+      # On a release this is fatal; on a manual run it stops before the upload
+      # and says what is missing.
+      - name: Require a signed APK
+        if: ${{ steps.apk.outputs.signed != 'true' }}
+        run: |
+          echo "::error::The APK is unsigned and cannot be installed."
+          echo ""
+          echo "Add these repository secrets, then run this workflow again:"
+          echo "  ANDROID_KEYSTORE_BASE64     the keystore, base64-encoded"
+          echo "  ANDROID_KEYSTORE_PASSWORD   keystore password"
+          echo "  ANDROID_KEY_ALIAS           key alias"
+          echo "  ANDROID_KEY_PASSWORD        key password"
+          echo ""
+          echo "  https://github.com/${{ github.repository }}/settings/secrets/actions"
+          echo ""
+          echo "See README -> Android app -> Releasing for how to generate the key."
+          exit 1
+
+      # Reached only for a signed APK, so nothing uninstallable is ever
+      # published or downloadable from a run.
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -212,18 +294,6 @@ jobs:
           path: ${{ steps.apk.outputs.name }}
           if-no-files-found: error
           retention-days: 30
-
-      # An unsigned APK cannot be installed, so publishing one as a release
-      # asset would give people a download that fails on their phone. Fail
-      # loudly instead, with what to do about it.
-      - name: Require a signed APK for a release
-        if: ${{ github.event_name == 'release' && steps.apk.outputs.signed != 'true' }}
-        run: |
-          echo "::error::The APK is unsigned and cannot be installed."
-          echo "Add the ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,"
-          echo "ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD repository secrets,"
-          echo "then re-run this workflow. See README -> Android app."
-          exit 1
 
       - name: Attach the APK to the release
         if: ${{ github.event_name == 'release' }}

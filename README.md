@@ -93,7 +93,7 @@ an APK without releasing.
 A release APK must be signed, or Android will refuse to install it. Generate a key once:
 
 ```bash
-keytool -genkey -v -keystore release.keystore -alias ugnay \
+keytool -genkeypair -v -keystore release.keystore -alias ugnay \
   -keyalg RSA -keysize 2048 -validity 10000
 base64 -w0 release.keystore      # the value for ANDROID_KEYSTORE_BASE64
 ```
@@ -111,9 +111,16 @@ existing app if it is signed with the same key. Then add these repository secret
 | `NEXT_PUBLIC_SUPABASE_URL` | Inlined into the bundle at build time |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Inlined into the bundle at build time |
 
-Optionally set the `NEXT_PUBLIC_API_ORIGIN` repository *variable* to point a fork at its own
-deployment. For Google sign-in from the app, add `com.ugnayai.app://auth-callback` to Supabase →
-Authentication → URL Configuration.
+The two `NEXT_PUBLIC_` values may be repository *variables* instead of secrets — they are public by
+design, the deployed site already serves them to every browser, and a variable's value is visible in
+the UI, which makes a mistyped one possible to spot. The workflow reads a secret first and falls
+back to a variable of the same name.
+
+Set the `NEXT_PUBLIC_API_ORIGIN` variable to point a fork at its own deployment. For Google sign-in
+from the app, add `com.ugnayai.app://auth-callback` to Supabase → Authentication → URL Configuration.
+
+The workflow verifies the signature with `apksigner` before uploading anything, so an unsigned build
+fails rather than producing a download that cannot be installed.
 
 ## How it works
 
