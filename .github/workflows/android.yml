@@ -88,10 +88,15 @@ jobs:
       # missing one would otherwise surface as a build error several steps
       # later. This says plainly which secret is absent, without printing any
       # value: only whether each one is set.
+      # A repository *variable* is accepted as a fallback. Both values are
+      # public by design — the deployed site already serves them to every
+      # browser, and Row Level Security is what protects the data — so a
+      # variable is a legitimate place to put them, and it is visible in the
+      # UI, which a secret is not.
       - name: Check the build secrets are set
         env:
-          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || vars.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
         run: |
           missing=0
           for name in SUPABASE_URL SUPABASE_KEY; do
@@ -104,8 +109,16 @@ jobs:
             fi
           done
           if [ "$missing" = "1" ]; then
-            echo "Add them under Settings -> Secrets and variables -> Actions."
-            echo "Both values are in your local .env (Supabase -> Project Settings -> API)."
+            echo ""
+            echo "Add them at:"
+            echo "  https://github.com/${{ github.repository }}/settings/secrets/actions"
+            echo ""
+            echo "They must be Repository secrets on the Actions tab - not Dependabot,"
+            echo "not Codespaces, and not an Environment secret, none of which this"
+            echo "workflow can read. Paste the value only, without the NAME= prefix."
+            echo ""
+            echo "This run: repository=${{ github.repository }} ref=${{ github.ref }}"
+            echo "Secrets are per repository, so a fork has its own set."
             exit 1
           fi
           echo "Both Supabase build secrets are set."
@@ -116,8 +129,8 @@ jobs:
       - name: Build web bundle
         env:
           NEXT_PUBLIC_API_ORIGIN: ${{ vars.NEXT_PUBLIC_API_ORIGIN || 'https://ugnayai.vercel.app' }}
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
         run: npm run build:android:web
 
       - name: Sync Capacitor
